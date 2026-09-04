@@ -13,7 +13,7 @@ The interface is built to answer three questions on every screen:
 
 ---
 
-## Running it
+## Running it — development
 
 Requires **Node 20.19+**. Nothing else — no database server, no compiler toolchain.
 
@@ -25,17 +25,39 @@ npm run dev
 - Web app — <http://localhost:5173>
 - API — <http://localhost:3001>
 
-The first start lays down a 90-day demo history (165 blocks across four factories) automatically.
-Every one of those blocks is genuinely signed and hashed; nothing is fixture data pasted into a
-table.
+`npm run dev` runs two **development** servers: Vite's dev server for the web app (unbundled,
+hot-reloading) and `tsx watch` for the API (restarts on every file change). Both are correct and
+complete for local use — this is the one command you need — but neither is what you'd run behind
+real traffic. See [Running it — production](#running-it--production) for that.
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | API and web app together |
-| `npm test` | 57 tests — chain, signatures, permissions, AI rules, projections |
-| `npm run typecheck` | `tsc --noEmit` across all three packages |
-| `npm run build` | Production build of the web app |
-| `npm run db:reset` | Wipe and re-lay the demo ledger |
+The first start lays down a 90-day demo history (165 blocks across four factories) automatically,
+the moment the API notices the ledger is empty. Every one of those blocks is genuinely signed and
+hashed; nothing is fixture data pasted into a table.
+
+Everything below is optional — the app runs correctly without any of it:
+
+| Command | What it does | Why you'd run it |
+| --- | --- | --- |
+| `npm test` | 57 tests — chain, signatures, permissions, AI rules, projections | Before trusting a code change. Doesn't run itself, and skipping it never stops the app running. |
+| `npm run typecheck` | `tsc --noEmit` across all three packages | Same — a static check, not part of runtime. Vite and `tsx` transpile regardless of type errors. |
+| `npm run db:reset` | Wipes the ledger and re-lays the demo history | To get back to a clean demo after using the Integrity Lab's tamper button, without restarting the server. |
+| `npm run db:migrate` | Creates tables if they don't exist (idempotent) | Not needed manually — `npm run dev` / `npm start` do this on boot. |
+
+## Running it — production
+
+`npm run dev` is a development mode and should not be what serves real traffic. For a live
+deployment, build the web app and run the API without its file-watcher:
+
+```bash
+npm run build                          # apps/web/dist — minified, hashed filenames
+npm run start -w @breadcrumbs/api      # tsx src/server.ts, no watch/restart-on-change
+```
+
+`apps/web/dist` then needs serving by an actual static file server (nginx, a CDN, any static
+host) with `/api` proxied through to the API process — which is exactly what the Docker setup
+below does. That compose file **is** the production path; it has not been run end-to-end on the
+machine this was built on because Docker isn't installed there, so treat it as built-but-unverified
+rather than proven.
 
 ### Docker
 
@@ -43,8 +65,9 @@ table.
 docker compose up --build     # web on :8080, API behind it on the same origin
 ```
 
-> Docker is **not installed on the machine this was built on**, so the compose file ships for
-> portability but has not been run. `npm run dev` is the path that has been tested end to end.
+Boots the API (with the ledger persisted in a named volume so restarts don't lose it) and an
+nginx container serving the built web app, `/api` proxied through to the API. Same auto-seed
+behaviour as running the API directly — an empty ledger gets the demo history on first boot.
 
 ---
 
