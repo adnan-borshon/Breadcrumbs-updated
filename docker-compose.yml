@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      PORT: 3001
+      BREADCRUMBS_DB: /data/breadcrumbs.db
+      # Override in any real deployment — the login flow is mocked, so the token is
+      # the only thing standing between a caller and a role.
+      BREADCRUMBS_JWT_SECRET: ${BREADCRUMBS_JWT_SECRET:-breadcrumbs-dev-secret-do-not-use-in-production}
+      # Set to "false" to remove the tamper / restore / rebuild demo endpoints.
+      BREADCRUMBS_ADMIN_TOOLS: ${BREADCRUMBS_ADMIN_TOOLS:-true}
+      # Lays down the demo history on an empty ledger only.
+      BREADCRUMBS_SEED_ON_EMPTY: ${BREADCRUMBS_SEED_ON_EMPTY:-true}
+    volumes:
+      # The chain lives in this file. Without the volume, every restart is a new ledger.
+      - ledger:/data
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - '8080:80'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  ledger:

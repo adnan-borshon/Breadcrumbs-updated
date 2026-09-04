@@ -1,0 +1,202 @@
+@import 'tailwindcss';
+
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/lora';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/*
+  Design tokens.
+
+  The palette is fixed by the brief: navy carries authority, parchment keeps the surface
+  warm rather than clinical, gold marks trust, teal means verified, and clay is reserved
+  strictly for flagged or tampered states — nothing else is allowed to be red, so red
+  always means the same thing.
+
+  Deliberately a single light theme. The warm off-white ground is doing the work of
+  making this read as a compliance dashboard rather than a crypto app; a dark variant
+  would undo that.
+*/
+@theme {
+  --color-navy: #0f2540;
+  --color-navy-700: #1b3a5e;
+  --color-navy-500: #2f5480;
+  --color-navy-300: #6b87a8;
+
+  --color-parchment: #f7f5ef;
+  --color-parchment-deep: #efece2;
+  --color-surface: #fffefb;
+
+  --color-gold: #c9a24b;
+  --color-gold-soft: #f3ead4;
+
+  --color-teal: #1d6e63;
+  --color-teal-soft: #e2efec;
+
+  --color-clay: #b23a2e;
+  --color-clay-soft: #f7e6e3;
+
+  --color-hairline: #ddd8cc;
+  --color-hairline-strong: #c8c1b1;
+
+  --color-ink: #16202c;
+  --color-ink-muted: #5d6875;
+  --color-ink-faint: #8b95a1;
+
+  --font-display: 'Lora Variable', Lora, Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-card: 0.625rem;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgb(15 37 64 / 0.04), 0 4px 14px -8px rgb(15 37 64 / 0.12);
+  --shadow-raised: 0 2px 6px rgb(15 37 64 / 0.06), 0 12px 32px -12px rgb(15 37 64 / 0.2);
+
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-parchment);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  p {
+    text-wrap: pretty;
+    margin: 0;
+  }
+
+  /* A visible, consistent focus ring everywhere — keyboard users get the same
+     affordance as pointer users rather than an invisible one. */
+  :focus-visible {
+    outline: 2px solid var(--color-navy-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-gold-soft);
+    color: var(--color-navy);
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Numeric columns line up when figures are compared down a column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .hairline {
+    border: 1px solid var(--color-hairline);
+  }
+
+  /* Cryptographic material is de-emphasised by default: monospace, muted, smaller.
+     People opt in to detail rather than being handed a ledger dump. */
+  .crypto {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: -0.01em;
+    color: var(--color-ink-muted);
+    word-break: break-all;
+  }
+
+  .card-enter {
+    animation: card-enter 0.28s var(--ease-out-soft) both;
+  }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Respect the system setting rather than overriding it. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Cross-document-feel route transitions, progressively enhanced —
+   browsers without the API simply render instantly. */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: vt-fade-out 0.14s var(--ease-out-soft) both;
+}
+
+::view-transition-new(root) {
+  animation: vt-fade-in 0.22s var(--ease-out-soft) both;
+}
+
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}

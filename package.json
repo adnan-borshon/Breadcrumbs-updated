@@ -1,0 +1,31 @@
+{
+  "name": "breadcrumbs",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Breadcrumbs — a private, permissioned hash-chain for garment compliance and commerce",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @breadcrumbs/api",
+    "dev:web": "npm run dev -w @breadcrumbs/web",
+    "build": "npm run build -w @breadcrumbs/web",
+    "preview": "npm run preview -w @breadcrumbs/web",
+    "typecheck": "npm run typecheck -w @breadcrumbs/shared && npm run typecheck -w @breadcrumbs/api && npm run typecheck -w @breadcrumbs/web",
+    "test": "npm run test -w @breadcrumbs/api",
+    "db:migrate": "npm run db:migrate -w @breadcrumbs/api",
+    "db:seed": "npm run db:seed -w @breadcrumbs/api",
+    "db:reset": "npm run db:reset -w @breadcrumbs/api",
+    "setup": "npm run db:reset"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.4",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

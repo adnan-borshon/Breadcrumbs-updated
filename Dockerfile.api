@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+
+# Node 20 to match the pinned dependency matrix — react-router 7, better-sqlite3 12,
+# vitest 4 and concurrently 9 are all pinned for this line.
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# Manifests first so the dependency layer caches independently of source changes.
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+
+RUN npm install --workspaces --include-workspace-root
+
+COPY tsconfig.base.json ./
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV BREADCRUMBS_DB=/data/breadcrumbs.db
+
+# The ledger is a file. Mount it, or every restart starts a new chain.
+VOLUME ["/data"]
+EXPOSE 3001
+
+CMD ["npm", "run", "start", "-w", "@breadcrumbs/api"]

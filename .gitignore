@@ -1,0 +1,28 @@
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+
+# SQLite database + drizzle output
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+apps/api/data/
+apps/api/drizzle/meta/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+
+# Test output
+coverage/

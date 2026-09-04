@@ -1,0 +1,32 @@
+{
+  "name": "@breadcrumbs/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Breadcrumbs ledger API \u00e2\u20ac\u201d the chain lives here",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:reset": "tsx src/db/reset.ts"
+  },
+  "dependencies": {
+    "@breadcrumbs/shared": "*",
+    "@hono/node-server": "2.1.1",
+    "@libsql/client": "0.18.0",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.13.5",
+    "jose": "6.2.10",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.24",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
