@@ -1,7 +1,21 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { MapPin, QrCode, Search, ShieldCheck, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  Factory as FactoryIcon,
+  MapPin,
+  QrCode,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 
 import { api } from '../lib/api.ts';
 import { dateOf } from '../lib/format.ts';
@@ -195,9 +209,7 @@ function FactoryTimeline({ factoryId }: { factoryId: string }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
-      <Link to="/lookup" viewTransition className="text-[0.8rem] text-ink-muted hover:text-navy">
-        ← All factories
-      </Link>
+      <BackLink defaultTo="/lookup" defaultLabel="All factories" />
 
       <header>
         <h1 className="text-[1.7rem] text-navy">{factory.name}</h1>
@@ -413,6 +425,7 @@ function FactoryTimeline({ factoryId }: { factoryId: string }) {
                       </dl>
                       <Link
                         to={`/record/${encodeURIComponent(entry.event_id)}`}
+                        state={{ from: `/lookup/${factory.id}`, label: factory.name }}
                         viewTransition
                         className="mt-2 inline-block text-[0.76rem] text-navy hover:underline"
                       >

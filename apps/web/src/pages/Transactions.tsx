@@ -193,6 +193,7 @@ export function Transactions() {
                     <td className="border-b border-hairline/60 px-3 py-2.5">
                       <Link
                         to={`/record/${encodeURIComponent(record.event_id)}`}
+                        state={{ from: '/app/transactions', label: 'Transactions' }}
                         viewTransition
                         className="font-medium text-navy hover:underline"
                       >

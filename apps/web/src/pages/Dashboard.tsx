@@ -556,6 +556,7 @@ function RecordList({
               <div className="min-w-0">
                 <Link
                   to={`/record/${encodeURIComponent(record.event_id)}`}
+                  state={{ from: '/app', label: 'Dashboard' }}
                   viewTransition
                   className="text-[0.88rem] font-medium text-navy hover:underline"
                 >

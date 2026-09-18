@@ -5,7 +5,7 @@
  * printing, colour-blindness, and a compliance officer squinting at a projector.
  */
 
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { AlertTriangle, CheckCircle2, CircleSlash, Clock, Landmark } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -79,15 +79,32 @@ export function StatusBadgeLink({
   eventId,
   size = 'md',
   compact = false,
+  state,
 }: {
   status: string;
   eventId: string;
   size?: 'sm' | 'md';
   compact?: boolean;
+  state?: { from?: string; label?: string };
 }) {
+  const location = useLocation();
+  const returnState = state ?? {
+    from: location.pathname,
+    label: location.pathname.includes('review')
+      ? 'Review Queue'
+      : location.pathname.includes('transactions')
+        ? 'Transactions'
+        : location.pathname.includes('explorer')
+          ? 'Explorer'
+          : location.pathname.includes('inventory')
+            ? 'Inventory'
+            : 'Dashboard',
+  };
+
   return (
     <Link
       to={`/record/${encodeURIComponent(eventId)}`}
+      state={returnState}
       viewTransition
       className="rounded-[var(--radius-pill)] transition-opacity hover:opacity-80"
       aria-label={`View record ${eventId} — ${STATUS[status as BadgeStatus]?.label ?? status}`}

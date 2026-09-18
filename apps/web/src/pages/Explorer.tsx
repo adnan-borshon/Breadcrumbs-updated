@@ -464,6 +464,7 @@ export function Explorer() {
                           <td className="border-b border-hairline/60 px-3 py-2.5">
                             <Link
                               to={`/record/${encodeURIComponent(block.event_id)}`}
+                              state={{ from: '/explorer', label: 'Explorer' }}
                               viewTransition
                               className="font-medium text-navy hover:underline"
                             >

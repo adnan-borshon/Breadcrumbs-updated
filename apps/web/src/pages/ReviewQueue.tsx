@@ -130,6 +130,7 @@ function ReviewCard({ record }: { record: LedgerRecord }) {
         <div className="min-w-0">
           <Link
             to={`/record/${encodeURIComponent(record.event_id)}`}
+            state={{ from: '/app/review', label: 'Review Queue' }}
             viewTransition
             className="font-display text-[1.05rem] text-navy hover:underline"
           >
