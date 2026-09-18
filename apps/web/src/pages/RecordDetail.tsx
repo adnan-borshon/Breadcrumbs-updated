@@ -24,7 +24,6 @@ import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, fieldLabel, fieldValue, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
-import { sha256File } from '../lib/verifyChain.ts';
 import {
   Button,
   Card,
@@ -875,24 +874,10 @@ function OfflineReceiptVerifier({ currentEventId }: { currentEventId: string }) 
 
       // Canonicalize record and verify ECDSA signature with WebCrypto
       const canonicalRecord = canonicalJson(parsed.record);
-      const signatureBytes = b64urlToBytes(parsed.attestation.signature);
-
-      const cryptoKey = await window.crypto.subtle.importKey(
-        'jwk',
+      const sigValid = await verifyPayload(
         parsed.attestation.public_key_jwk,
-        { name: 'ECDSA', namedCurve: 'P-256' },
-        false,
-        ['verify'],
-      );
-
-      const encoder = new TextEncoder();
-      const payloadBytes = encoder.encode(canonicalRecord);
-
-      const sigValid = await window.crypto.subtle.verify(
-        { name: 'ECDSA', hash: { name: 'SHA-256' } },
-        cryptoKey,
-        signatureBytes,
-        payloadBytes,
+        canonicalRecord,
+        parsed.attestation.signature,
       );
 
       if (!sigValid) {

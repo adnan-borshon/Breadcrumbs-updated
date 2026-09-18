@@ -19,7 +19,7 @@ import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { BlockCheck, ChainReport, EventFamily } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
-import { verifyChainLocally, type LocalVerifyReport, type RawBlock } from '../lib/verifyChain.ts';
+import { verifyChainLocally, type LocalVerifyReport } from '../lib/verifyChain.ts';
 import { dateTimeOf, eventLabel } from '../lib/format.ts';
 import { Button, Card, ErrorNote, Spinner, cx } from '../components/ui/primitives.tsx';
 import { HashText } from '../components/ledger/Crypto.tsx';
