@@ -55,14 +55,17 @@ inventoryRoutes.get('/:factoryId/:sku', async (c) => {
 
 export const contractRoutes = new Hono<AppEnv>();
 
-contractRoutes.get('/', async (c) =>
-  c.json({
-    contracts: await listContracts({
-      factoryId: c.req.query('factory') || undefined,
-      brandId: c.req.query('brand') || undefined,
-    }),
-  }),
-);
+contractRoutes.get('/', async (c) => {
+  const actor = c.get('actor');
+  let factoryId = c.req.query('factory') || undefined;
+  let brandId = c.req.query('brand') || undefined;
+  if (actor?.role === 'factory' && actor.factoryId) factoryId = actor.factoryId;
+  if (actor?.role === 'brand') brandId = actor.id;
+
+  return c.json({
+    contracts: await listContracts({ factoryId, brandId }),
+  });
+});
 
 contractRoutes.get('/:contractId', async (c) => {
   const contractId = c.req.param('contractId');
@@ -87,16 +90,22 @@ contractRoutes.get('/:contractId', async (c) => {
 
 export const invoiceRoutes = new Hono<AppEnv>();
 
-invoiceRoutes.get('/', async (c) =>
-  c.json({
+invoiceRoutes.get('/', async (c) => {
+  const actor = c.get('actor');
+  let factoryId = c.req.query('factory') || undefined;
+  let brandId = c.req.query('brand') || undefined;
+  if (actor?.role === 'factory' && actor.factoryId) factoryId = actor.factoryId;
+  if (actor?.role === 'brand') brandId = actor.id;
+
+  return c.json({
     invoices: await listInvoices({
-      factoryId: c.req.query('factory') || undefined,
-      brandId: c.req.query('brand') || undefined,
+      factoryId,
+      brandId,
       contractId: c.req.query('contract') || undefined,
       status: (c.req.query('status') as InvoiceStatus | undefined) || undefined,
     }),
-  }),
-);
+  });
+});
 
 invoiceRoutes.get('/:invoiceId', async (c) => {
   const invoiceId = c.req.param('invoiceId');
@@ -123,29 +132,37 @@ invoiceRoutes.get('/:invoiceId', async (c) => {
 
 export const paymentRoutes = new Hono<AppEnv>();
 
-paymentRoutes.get('/', async (c) =>
-  c.json({
+paymentRoutes.get('/', async (c) => {
+  const actor = c.get('actor');
+  let factoryId = c.req.query('factory') || undefined;
+  let brandId = c.req.query('brand') || undefined;
+  if (actor?.role === 'factory' && actor.factoryId) factoryId = actor.factoryId;
+  if (actor?.role === 'brand') brandId = actor.id;
+
+  return c.json({
     payments: await listPayments({
       invoiceId: c.req.query('invoice') || undefined,
-      factoryId: c.req.query('factory') || undefined,
-      brandId: c.req.query('brand') || undefined,
+      factoryId,
+      brandId,
     }),
-  }),
-);
+  });
+});
 
 paymentRoutes.get('/:paymentId', async (c) => {
   const payment = await getPayment(c.req.param('paymentId'));
   if (!payment) throw new LedgerError(404, 'no_such_payment', 'No payment with that id.');
 
   const [invoice, events] = await Promise.all([
-    getInvoice(payment.invoice_id),
+    payment.invoice_id ? getInvoice(payment.invoice_id) : Promise.resolve(null),
     listRecords({ family: 'payment' }),
   ]);
 
   return c.json({
     payment,
     invoice,
-    events: events.filter((e) => e.data_fields['payment_id'] === payment.payment_id),
+    events: events.filter(
+      (e) => e.data_fields['payment_id'] === payment.payment_id || e.ref_id === payment.payment_id,
+    ),
   });
 });
 
@@ -158,13 +175,19 @@ export const transactionRoutes = new Hono<AppEnv>();
  * This is the business-readable view of the same blocks the explorer shows as hashes.
  */
 transactionRoutes.get('/', async (c) => {
+  const actor = c.get('actor');
+  let factoryId = c.req.query('factory') || undefined;
+  if (actor?.role === 'factory' && actor.factoryId) {
+    factoryId = actor.factoryId;
+  }
+
   const families = (c.req.query('family') ?? '')
     .split(',')
     .map((f) => f.trim())
     .filter(Boolean);
 
   const all = await listRecords({
-    factoryId: c.req.query('factory') || undefined,
+    factoryId,
     status: (c.req.query('status') as never) || undefined,
   });
 

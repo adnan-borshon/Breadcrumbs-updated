@@ -6,22 +6,25 @@ import {
   Blocks,
   CheckCircle2,
   ChevronDown,
+  Download,
   ExternalLink,
+  FileCheck2,
   Fingerprint,
   Loader2,
   ShieldAlert,
   ShieldCheck,
+  Upload,
   Users,
   XCircle,
 } from 'lucide-react';
-import { EVENT_FAMILY, FAMILY_LABEL } from '@breadcrumbs/shared';
+import { canonicalJson, EVENT_FAMILY, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { Currency, LedgerRecord } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, fieldLabel, fieldValue, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
-import { verifyChainLocally, jwkFingerprint, type RawBlock } from '../lib/verifyChain.ts';
+import { verifyChainLocally, jwkFingerprint, b64urlToBytes, type RawBlock } from '../lib/verifyChain.ts';
 import {
   Button,
   Card,
@@ -107,7 +110,18 @@ export function RecordDetail() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status={record.status} />
-          <CopyVerificationLink eventId={record.event_id} />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void api.downloadReceipt(record.event_id)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+              title="Download standalone verifiable cryptographic receipt as JSON"
+            >
+              <Download size={13} aria-hidden />
+              Download Receipt (.json)
+            </button>
+            <CopyVerificationLink eventId={record.event_id} />
+          </div>
         </div>
       </header>
 

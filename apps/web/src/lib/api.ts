@@ -214,6 +214,36 @@ export const api = {
     }>('/admin/tamper', { block_index: blockIndex }),
   restore: () => post<{ restored: boolean; blocks: number; flagged: number; report: ChainReport }>('/admin/restore'),
   rebuild: () => post<{ rebuilt: boolean; replayed: number }>('/admin/rebuild'),
+
+  downloadReceiptUrl: (eventId: string) => `${BASE}/export/receipt/${encodeURIComponent(eventId)}`,
+  downloadReceipt: async (eventId: string): Promise<void> => {
+    const res = await fetch(`${BASE}/export/receipt/${encodeURIComponent(eventId)}`);
+    if (!res.ok) throw new ApiError(res.status, 'download_failed', 'Could not download receipt.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${eventId}-receipt.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+  exportTransactions: async (params: { family?: string; factory?: string; status?: string; q?: string; format: 'csv' | 'json' }): Promise<void> => {
+    const headers = new Headers();
+    if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+    const res = await fetch(`${BASE}/export/transactions${query(params)}`, { headers });
+    if (!res.ok) throw new ApiError(res.status, 'export_failed', 'Could not export ledger data.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = params.format === 'csv' ? 'breadcrumbs-ledger-export.csv' : 'breadcrumbs-ledger-export.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
 };
 
 function query(params: Record<string, string | number | undefined>): string {

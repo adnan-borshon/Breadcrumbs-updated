@@ -17,6 +17,7 @@ import {
 } from './routes/commerce.ts';
 import { publicRoutes } from './routes/publicRoutes.ts';
 import { adminRoutes } from './routes/admin.ts';
+import { exportRoutes } from './routes/export.ts';
 import { listFactories, listFactoryTrust } from './chain/queries.ts';
 
 export function createApp() {
@@ -44,6 +45,7 @@ export function createApp() {
   app.route('/api/invoices', invoiceRoutes);
   app.route('/api/payments', paymentRoutes);
   app.route('/api/transactions', transactionRoutes);
+  app.route('/api/export', exportRoutes);
   app.route('/api/public', publicRoutes);
   app.route('/api/admin', adminRoutes);
 

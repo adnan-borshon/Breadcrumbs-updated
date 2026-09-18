@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search } from 'lucide-react';
+import { Download, Search } from 'lucide-react';
 import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { Currency, EventFamily, LedgerRecord } from '@breadcrumbs/shared';
 
@@ -66,9 +66,43 @@ export function Transactions() {
             aria-label="Search transactions"
           />
         </div>
-        <p className="shrink-0 text-[0.78rem] text-ink-muted">
-          {data ? `${data.total} matching` : ''}
-        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <p className="text-[0.78rem] text-ink-muted">
+            {data ? `${data.total} matching` : ''}
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              void api.exportTransactions({
+                family: families.length ? families.join(',') : undefined,
+                factory,
+                q: term.trim() || undefined,
+                format: 'csv',
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+            title="Export filtered transactions as CSV spreadsheet"
+          >
+            <Download size={13} aria-hidden />
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void api.exportTransactions({
+                family: families.length ? families.join(',') : undefined,
+                factory,
+                q: term.trim() || undefined,
+                format: 'json',
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+            title="Export filtered transactions as verifiable JSON"
+          >
+            <Download size={13} aria-hidden />
+            Export JSON
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5">

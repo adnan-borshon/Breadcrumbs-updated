@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Blocks,
   CheckCircle2,
+  Download,
   FlaskConical,
   Globe,
   Loader2,
@@ -101,14 +102,24 @@ export function Explorer() {
             each link to the block before it, and re-verifies each signature.
           </p>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => void handleVerifyBoth()}
-          loading={verifyNow.isPending || localVerifying}
-        >
-          <ShieldCheck size={15} aria-hidden />
-          Verify chain integrity
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => void api.exportTransactions({ format: 'json' })}
+            title="Download full ledger blocks snapshot as JSON"
+          >
+            <Download size={15} aria-hidden />
+            Export Ledger Snapshot
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => void handleVerifyBoth()}
+            loading={verifyNow.isPending || localVerifying}
+          >
+            <ShieldCheck size={15} aria-hidden />
+            Verify chain integrity
+          </Button>
+        </div>
       </header>
 
       {/* Dual-Attestation Panel */}

@@ -56,7 +56,7 @@ export interface RawBlock {
 /* ----------------------------------------------------------------- helpers */
 
 /** Convert a Base64-URL string to Uint8Array. */
-function b64urlToBytes(b64: string): Uint8Array<ArrayBuffer> {
+export function b64urlToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
