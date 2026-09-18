@@ -26,6 +26,7 @@ import { NewInvoice } from './pages/NewInvoice.tsx';
 import { Payments } from './pages/Payments.tsx';
 import { PaymentDetail } from './pages/PaymentDetail.tsx';
 import { NotFound } from './pages/NotFound.tsx';
+import { Security } from './pages/Security.tsx';
 
 /** Gates a route behind sign-in, and optionally behind particular roles. */
 function Protected({ roles, children }: { roles?: Role[]; children: React.ReactNode }) {
@@ -171,6 +172,15 @@ export function App() {
           element={
             <Protected>
               <PaymentDetail />
+            </Protected>
+          }
+        />
+
+        <Route
+          path="/app/security"
+          element={
+            <Protected>
+              <Security />
             </Protected>
           }
         />

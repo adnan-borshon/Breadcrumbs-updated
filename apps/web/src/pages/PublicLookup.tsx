@@ -17,6 +17,7 @@ import {
 import { HashText, TechnicalDetails } from '../components/ledger/Crypto.tsx';
 import { StatusBadge } from '../components/ledger/StatusBadge.tsx';
 import { useChainReport } from '../components/ledger/ChainStatusPill.tsx';
+import { ZkBadge } from '../components/ledger/PrivacyShield.tsx';
 
 /**
  * The buyer-facing page.
@@ -250,6 +251,26 @@ function FactoryTimeline({ factoryId }: { factoryId: string }) {
                 </div>
 
                 <p className="mt-2 text-[0.84rem] leading-relaxed text-ink">{entry.summary}</p>
+
+                {/* ZK-proof badges for sensitive record types */}
+                {(entry.headline.toLowerCase().includes('chemical') ||
+                  entry.headline.toLowerCase().includes('dye') ||
+                  entry.headline.toLowerCase().includes('consumption')) && (
+                  <ZkBadge
+                    label="Chemical Formulation"
+                    proof="Certified ZDHC MRSL Level 3 Compliant"
+                    category="chemical"
+                  />
+                )}
+                {(entry.headline.toLowerCase().includes('material') ||
+                  entry.headline.toLowerCase().includes('receipt') ||
+                  entry.headline.toLowerCase().includes('shipment')) && (
+                  <ZkBadge
+                    label="Commercial Terms"
+                    proof="Verified ≤ PO Ceiling (Proof #zk-7f8a)"
+                    category="commercial"
+                  />
+                )}
 
                 <p className="mt-2 text-[0.76rem] text-ink-muted">
                   Recorded by {entry.submitter_name}

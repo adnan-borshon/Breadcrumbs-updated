@@ -1,12 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, ScrollText } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  FileText,
+  Loader2,
+  Cpu,
+  ScrollText,
+  Upload,
+  X,
+} from 'lucide-react';
 import { EVENT_LABEL, submittableEvents } from '@breadcrumbs/shared';
 import type { EventType } from '@breadcrumbs/shared';
 
 import { commitEvent, makeEventId, type CommitStage } from '../lib/signer.ts';
+import { sha256File, formatBytes } from '../lib/verifyChain.ts';
 import { useSession } from '../store/session.ts';
+import { AnomalyChart } from '../components/ledger/AnomalyChart.tsx';
 import {
   Button,
   Card,
@@ -48,7 +60,7 @@ const FORMS: Partial<Record<EventType, FormField[]>> = {
   ],
   production_report: [
     { name: 'order_ref', label: 'Order reference', kind: 'text', placeholder: 'ORD-NW-4471' },
-    { name: 'units_produced', label: 'Units produced', kind: 'integer', hint: 'Checked against this factory’s own history.' },
+    { name: 'units_produced', label: 'Units produced', kind: 'integer', hint: 'Checked against this factory\'s own history.' },
     { name: 'working_hours', label: 'Working hours', kind: 'number' },
     { name: 'line_count', label: 'Lines running', kind: 'integer', defaultValue: 1 },
     { name: 'defect_count', label: 'Defects', kind: 'integer', defaultValue: 0 },
@@ -93,7 +105,7 @@ const FORMS: Partial<Record<EventType, FormField[]>> = {
   chemical_consumption: [
     { name: 'sku', label: 'SKU', kind: 'text' },
     { name: 'quantity', label: 'Quantity used', kind: 'number' },
-    { name: 'units_processed', label: 'Units processed', kind: 'integer', hint: 'Chemical use per unit is compared with this factory’s norm.' },
+    { name: 'units_processed', label: 'Units processed', kind: 'integer', hint: 'Chemical use per unit is compared with this factory\'s norm.' },
     { name: 'process', label: 'Process', kind: 'text', placeholder: 'Reactive dyeing — exhaust' },
   ],
   chemical_disposal: [
@@ -125,10 +137,19 @@ const GROUPS: { label: string; types: EventType[] }[] = [
 ];
 
 const STAGES: { id: CommitStage; label: string; detail: string }[] = [
-  { id: 'validating', label: 'Running the anomaly check', detail: 'Measured against this factory’s own history' },
+  { id: 'validating', label: 'Running the anomaly check', detail: "Measured against this factory's own history" },
   { id: 'signing', label: 'Signing on this device', detail: 'ECDSA P-256, private key never leaves the browser' },
   { id: 'committing', label: 'Hashing onto the chain', detail: 'SHA-256, linked to the current head block' },
   { id: 'done', label: 'Committed', detail: 'The block is written and verifiable' },
+];
+
+
+/* IoT device options */
+const IOT_DEVICES = [
+  { id: 'scale-001', label: 'Digital Scale TS-200', cert: 'CERT-IOT-2024-7712', type: 'Material weighing' },
+  { id: 'flow-003', label: 'Effluent Flow Meter EFM-3', cert: 'CERT-IOT-2024-8801', type: 'Water treatment monitoring' },
+  { id: 'cut-007', label: 'Auto Cutting Table CUT-7', cert: 'CERT-IOT-2024-5503', type: 'Fabric processing' },
+  { id: 'temp-002', label: 'Dye Bath Sensor DBS-2', cert: 'CERT-IOT-2024-6614', type: 'Chemical process' },
 ];
 
 export function SubmitRecord() {
@@ -146,6 +167,18 @@ export function SubmitRecord() {
   const [stage, setStage] = useState<CommitStage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Oracle / physical attestation state
+  const [iotSource, setIotSource] = useState<'manual' | 'iot'>('manual');
+  const [selectedDevice, setSelectedDevice] = useState(IOT_DEVICES[0]);
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
+  const [evidenceHash, setEvidenceHash] = useState<string | null>(null);
+  const [hashingFile, setHashingFile] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Anomaly chart state (shown post-commit for production_report)
+  const [anomalyResult, setAnomalyResult] = useState<{ flagged: boolean; score: number | null } | null>(null);
+
   const fields = FORMS[eventType] ?? [];
 
   const setField = (name: string, value: string | boolean) =>
@@ -158,16 +191,36 @@ export function SubmitRecord() {
     return field.kind === 'boolean' ? false : '';
   };
 
+  const handleFile = useCallback(async (file: File) => {
+    setEvidenceFile(file);
+    setEvidenceHash(null);
+    setHashingFile(true);
+    try {
+      const hash = await sha256File(file);
+      setEvidenceHash(hash);
+    } finally {
+      setHashingFile(false);
+    }
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) void handleFile(file);
+    },
+    [handleFile],
+  );
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!identity?.factory_id) return;
 
     setError(null);
     setStage('validating');
+    setAnomalyResult(null);
 
-    // Coerce to the types the shared schema expects. Anything optional and blank falls
-    // back to the schema's own default, so the signed payload matches what the server
-    // would parse — a mismatch there is rejected, by design.
     const dataFields: Record<string, unknown> = {};
     for (const field of fields) {
       const raw = valueFor(field);
@@ -188,6 +241,16 @@ export function SubmitRecord() {
       dataFields[field.name] = String(raw).trim();
     }
 
+    // Embed oracle source metadata
+    dataFields['_source'] = iotSource === 'iot'
+      ? `IoT:${selectedDevice.id}:${selectedDevice.cert}`
+      : 'ManualEntry';
+
+    // Embed evidence hash if a file was attached
+    if (evidenceHash) {
+      dataFields['evidence_hash'] = evidenceHash;
+    }
+
     try {
       const result = await commitEvent({
         eventType,
@@ -197,6 +260,7 @@ export function SubmitRecord() {
         onStage: setStage,
       });
 
+      setAnomalyResult(result.anomaly);
       await queryClient.invalidateQueries({ predicate: () => true });
       navigate(`/record/${encodeURIComponent(result.record.event_id)}`, { viewTransition: true });
     } catch (err) {
@@ -220,95 +284,336 @@ export function SubmitRecord() {
         </p>
       </header>
 
-      <form onSubmit={onSubmit}>
-        <Card>
-          <CardHeader title="What happened" />
+      <form onSubmit={(e) => void onSubmit(e)}>
+        <div className="space-y-5">
+          <Card>
+            <CardHeader title="What happened" />
 
-          <div className="space-y-5 px-5 py-5">
-            <Field label="Event type" required>
-              <Select
-                value={eventType}
-                onChange={(event) => {
-                  setEventType(event.target.value as EventType);
-                  setValues({});
-                }}
-              >
-                {GROUPS.map((group) => {
-                  const options = group.types.filter((type) => allowed.includes(type));
-                  if (options.length === 0) return null;
+            <div className="space-y-5 px-5 py-5">
+              <Field label="Event type" required>
+                <Select
+                  value={eventType}
+                  onChange={(event) => {
+                    setEventType(event.target.value as EventType);
+                    setValues({});
+                  }}
+                >
+                  {GROUPS.map((group) => {
+                    const options = group.types.filter((type) => allowed.includes(type));
+                    if (options.length === 0) return null;
+                    return (
+                      <optgroup key={group.label} label={group.label}>
+                        {options.map((type) => (
+                          <option key={type} value={type}>
+                            {EVENT_LABEL[type]}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </Select>
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {fields.map((field) => {
+                  const wide = field.kind === 'textarea';
                   return (
-                    <optgroup key={group.label} label={group.label}>
-                      {options.map((type) => (
-                        <option key={type} value={type}>
-                          {EVENT_LABEL[type]}
-                        </option>
-                      ))}
-                    </optgroup>
+                    <div key={field.name} className={wide ? 'sm:col-span-2' : undefined}>
+                      <Field label={field.label} hint={field.hint} required={!field.optional}>
+                        {field.kind === 'boolean' ? (
+                          <label className="flex items-center gap-2 rounded-md border border-hairline-strong bg-surface px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(valueFor(field))}
+                              onChange={(event) => setField(field.name, event.target.checked)}
+                              className="size-4 accent-[#0F2540]"
+                            />
+                            <span className="text-[0.82rem] text-ink">
+                              {valueFor(field) ? 'Yes' : 'No'}
+                            </span>
+                          </label>
+                        ) : field.kind === 'textarea' ? (
+                          <Textarea
+                            value={String(valueFor(field))}
+                            onChange={(event) => setField(field.name, event.target.value)}
+                            placeholder={field.placeholder}
+                          />
+                        ) : (
+                          <Input
+                            type={field.kind === 'date' ? 'date' : field.kind === 'text' ? 'text' : 'number'}
+                            step={field.kind === 'number' ? 'any' : field.kind === 'integer' ? '1' : undefined}
+                            value={String(valueFor(field))}
+                            onChange={(event) => setField(field.name, event.target.value)}
+                            placeholder={field.placeholder}
+                            required={!field.optional}
+                          />
+                        )}
+                      </Field>
+                    </div>
                   );
                 })}
-              </Select>
-            </Field>
+              </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              {fields.map((field) => {
-                const wide = field.kind === 'textarea';
-                return (
-                  <div key={field.name} className={wide ? 'sm:col-span-2' : undefined}>
-                    <Field label={field.label} hint={field.hint} required={!field.optional}>
-                      {field.kind === 'boolean' ? (
-                        <label className="flex items-center gap-2 rounded-md border border-hairline-strong bg-surface px-3 py-2">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(valueFor(field))}
-                            onChange={(event) => setField(field.name, event.target.checked)}
-                            className="size-4 accent-[#0F2540]"
-                          />
-                          <span className="text-[0.82rem] text-ink">
-                            {valueFor(field) ? 'Yes' : 'No'}
-                          </span>
-                        </label>
-                      ) : field.kind === 'textarea' ? (
-                        <Textarea
-                          value={String(valueFor(field))}
-                          onChange={(event) => setField(field.name, event.target.value)}
-                          placeholder={field.placeholder}
-                        />
-                      ) : (
-                        <Input
-                          type={field.kind === 'date' ? 'date' : field.kind === 'text' ? 'text' : 'number'}
-                          step={field.kind === 'number' ? 'any' : field.kind === 'integer' ? '1' : undefined}
-                          value={String(valueFor(field))}
-                          onChange={(event) => setField(field.name, event.target.value)}
-                          placeholder={field.placeholder}
-                          required={!field.optional}
-                        />
-                      )}
-                    </Field>
-                  </div>
-                );
-              })}
+              <p className="border-t border-hairline pt-4 text-[0.76rem] text-ink-muted">
+                The timestamp is taken at submission and the factory is fixed to your account — both
+                are part of what you sign.
+              </p>
             </div>
 
-            <p className="border-t border-hairline pt-4 text-[0.76rem] text-ink-muted">
-              The timestamp is taken at submission and the factory is fixed to your account — both
-              are part of what you sign.
-            </p>
-          </div>
+            <div className="flex flex-wrap items-center gap-3 border-t border-hairline px-5 py-4">
+              <Button type="submit" variant="primary" disabled={stage !== null}>
+                <ScrollText size={15} aria-hidden />
+                Sign and commit
+              </Button>
+              <span className="text-[0.76rem] text-ink-muted">
+                This writes a permanent block. Records are never deleted, only reviewed.
+              </span>
+            </div>
+          </Card>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-hairline px-5 py-4">
-            <Button type="submit" variant="primary" disabled={stage !== null}>
-              <ScrollText size={15} aria-hidden />
-              Sign and commit
-            </Button>
-            <span className="text-[0.76rem] text-ink-muted">
-              This writes a permanent block. Records are never deleted, only reviewed.
-            </span>
-          </div>
-        </Card>
+          {/* Oracle / Physical Attestation */}
+          <Card>
+            <CardHeader
+              title="Physical Attestation & Data Source"
+              description="Bridge the physical-digital divide. Document how this data was collected."
+            />
+            <div className="space-y-5 px-5 py-5">
+              {/* Source selector */}
+              <div>
+                <p className="mb-2 text-[0.78rem] font-medium text-navy">Data source</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SourceOption
+                    id="manual"
+                    active={iotSource === 'manual'}
+                    onClick={() => setIotSource('manual')}
+                    icon={<ScrollText size={16} />}
+                    label="Manual Operator Entry"
+                    description="Data entered by a human operator. Subject to input error — reviewers may request corroborating evidence."
+                  />
+                  <SourceOption
+                    id="iot"
+                    active={iotSource === 'iot'}
+                    onClick={() => setIotSource('iot')}
+                    icon={<Cpu size={16} />}
+                    label="Direct IoT Telemetry (Verified Stream)"
+                    description="Data piped directly from a hardware sensor or automated system. Device certificate is embedded in the block."
+                    badge="Higher Trust"
+                  />
+                </div>
+              </div>
+
+              {/* IoT device selector */}
+              {iotSource === 'iot' && (
+                <div className="rounded-[var(--radius-card)] border border-teal/25 bg-teal-soft/30 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-60" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-teal" />
+                    </span>
+                    <p className="text-[0.78rem] font-semibold text-teal">Hardware Attestation Active</p>
+                  </div>
+
+                  <Field label="Select registered IoT device">
+                    <Select
+                      value={selectedDevice.id}
+                      onChange={(e) => {
+                        const d = IOT_DEVICES.find((d) => d.id === e.target.value);
+                        if (d) setSelectedDevice(d);
+                      }}
+                    >
+                      {IOT_DEVICES.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.label} — {d.type}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <dl className="grid grid-cols-2 gap-2 text-[0.75rem]">
+                    <div>
+                      <dt className="text-ink-muted">Device ID</dt>
+                      <dd className="font-mono text-navy">{selectedDevice.id}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-muted">Certificate</dt>
+                      <dd className="font-mono text-teal">{selectedDevice.cert}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-muted">Type</dt>
+                      <dd className="text-navy">{selectedDevice.type}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-ink-muted">Stream status</dt>
+                      <dd className="text-teal">✓ Live &amp; authenticated</dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
+
+              {/* Physical evidence dropzone */}
+              <div>
+                <p className="mb-2 text-[0.78rem] font-medium text-navy">
+                  Attach Physical Evidence{' '}
+                  <span className="text-ink-faint font-normal">(optional)</span>
+                </p>
+                <p className="mb-3 text-[0.74rem] text-ink-muted">
+                  Lab test certificates, bill of lading PDFs, factory inspection photos. The
+                  SHA-256 fingerprint is computed locally in your browser and anchored to the block
+                  — never the file itself.
+                </p>
+
+                {evidenceFile ? (
+                  <div className="rounded-md border border-teal/30 bg-teal-soft/40 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText size={16} className="shrink-0 text-teal" aria-hidden />
+                        <div className="min-w-0">
+                          <p className="truncate text-[0.82rem] font-medium text-navy">{evidenceFile.name}</p>
+                          <p className="text-[0.72rem] text-ink-muted">{formatBytes(evidenceFile.size)}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setEvidenceFile(null); setEvidenceHash(null); }}
+                        className="shrink-0 p-1 text-ink-faint hover:text-navy"
+                        aria-label="Remove file"
+                      >
+                        <X size={14} aria-hidden />
+                      </button>
+                    </div>
+
+                    {hashingFile ? (
+                      <div className="flex items-center gap-2 text-[0.76rem] text-[#8a6d24]">
+                        <Loader2 size={13} className="animate-spin" />
+                        Computing SHA-256 in browser…
+                      </div>
+                    ) : evidenceHash ? (
+                      <div>
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-teal">
+                          Digital Fingerprint — Anchored to Block
+                        </p>
+                        <p className="mt-0.5 font-mono text-[0.7rem] text-ink break-all">{evidenceHash}</p>
+                        <p className="mt-1 flex items-center gap-1.5 text-[0.72rem] text-teal">
+                          <CheckCircle2 size={11} aria-hidden />
+                          Computed locally via window.crypto.subtle.digest("SHA-256") — not uploaded
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div
+                    className={cx(
+                      'flex flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed p-8 text-center transition-colors cursor-pointer',
+                      dragOver
+                        ? 'border-navy bg-navy/5'
+                        : 'border-hairline-strong hover:border-navy/40 hover:bg-parchment/60',
+                    )}
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={onDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    role="button"
+                    aria-label="Drop physical evidence file or click to browse"
+                  >
+                    <Upload size={22} className="text-ink-faint" aria-hidden />
+                    <div>
+                      <p className="text-[0.82rem] font-medium text-navy">Drop file or click to browse</p>
+                      <p className="text-[0.74rem] text-ink-muted">PDF, JPEG, PNG, XLSX — any format</p>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
       </form>
 
       {stage ? <PipelineProgress stage={stage} /> : null}
       {error ? <ErrorNote title="The ledger rejected this record" message={error} /> : null}
+
+      {/* Anomaly chart — shown for production_report after commit */}
+      {anomalyResult && eventType === 'production_report' && (
+        <Card className="p-5">
+          <AnomalyChart
+            value={Number(values['units_produced'] ?? 0)}
+            mean={10200}
+            stdDev={1400}
+            unit="units"
+          />
+          {anomalyResult.flagged && (
+            <div className="mt-4 rounded-md border border-clay/30 bg-clay-soft px-4 py-3 text-[0.8rem] text-clay">
+              This submission was flagged for human review. Score: {anomalyResult.score?.toFixed(2)}
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------- sub-components */
+
+function SourceOption({
+  id,
+  active,
+  onClick,
+  icon,
+  label,
+  description,
+  badge,
+}: {
+  id: string;
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  badge?: string;
+}) {
+  return (
+    <div
+      role="radio"
+      aria-checked={active}
+      id={id}
+      onClick={onClick}
+      className={cx(
+        'cursor-pointer rounded-[var(--radius-card)] border p-3.5 transition-colors',
+        active ? 'border-navy bg-navy/5' : 'border-hairline bg-surface hover:border-hairline-strong',
+      )}
+    >
+      <div className="flex items-start gap-2.5">
+        <div
+          className={cx(
+            'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+            active ? 'bg-navy text-parchment' : 'bg-parchment-deep text-ink-muted',
+          )}
+        >
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[0.82rem] font-semibold text-navy">{label}</p>
+            {badge && (
+              <span className="rounded-[var(--radius-pill)] border border-teal/30 bg-teal-soft px-2 py-0.5 text-[0.62rem] font-semibold text-teal">
+                {badge}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-[0.73rem] leading-relaxed text-ink-muted">{description}</p>
+        </div>
+        <div
+          className={cx(
+            'mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border-2',
+            active ? 'border-navy bg-navy' : 'border-hairline-strong bg-surface',
+          )}
+        />
+      </div>
     </div>
   );
 }

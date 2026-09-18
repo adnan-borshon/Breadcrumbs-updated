@@ -6,7 +6,11 @@ import {
   Blocks,
   CheckCircle2,
   FlaskConical,
+  Globe,
+  Loader2,
+  Network,
   RotateCcw,
+  Shield,
   ShieldAlert,
   ShieldCheck,
 } from 'lucide-react';
@@ -14,22 +18,32 @@ import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { BlockCheck, ChainReport, EventFamily } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
+import { verifyChainLocally, type LocalVerifyReport, type RawBlock } from '../lib/verifyChain.ts';
 import { dateTimeOf, eventLabel } from '../lib/format.ts';
 import { Button, Card, ErrorNote, Spinner, Stat, cx } from '../components/ui/primitives.tsx';
 import { HashText } from '../components/ledger/Crypto.tsx';
 import { StatusBadge } from '../components/ledger/StatusBadge.tsx';
+import { NetworkTopology } from '../components/ledger/NetworkTopology.tsx';
+
+type ExplorerTab = 'blocks' | 'topology';
 
 export function Explorer() {
   const queryClient = useQueryClient();
   const [family, setFamily] = useState<EventFamily | 'all'>('all');
   const [labOpen, setLabOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<ExplorerTab>('blocks');
 
+  // Server-side verification (existing)
   const blocksQuery = useQuery({
     queryKey: ['chain', 'blocks', family],
     queryFn: () => api.blocks(family === 'all' ? {} : { family }),
   });
 
   const verifyQuery = useQuery({ queryKey: ['chain', 'verify'], queryFn: api.verify });
+
+  // Client-side local verification state
+  const [localReport, setLocalReport] = useState<LocalVerifyReport | null>(null);
+  const [localVerifying, setLocalVerifying] = useState(false);
 
   const invalidateEverything = () =>
     queryClient.invalidateQueries({ predicate: () => true });
@@ -57,6 +71,26 @@ export function Explorer() {
   const report = verifyNow.data ?? verifyQuery.data;
   const checks = new Map<number, BlockCheck>((report?.blocks ?? []).map((c) => [c.index, c]));
 
+  /** Run client-side verification against the raw block list. */
+  const runLocalVerify = async () => {
+    setLocalVerifying(true);
+    try {
+      // Fetch all blocks — the blocks query already has them, cast as RawBlock
+      const data = await api.blocks({});
+      const rawBlocks = data.blocks as unknown as RawBlock[];
+      const sorted = [...rawBlocks].sort((a, b) => a.index - b.index);
+      const result = await verifyChainLocally(sorted);
+      setLocalReport(result);
+    } finally {
+      setLocalVerifying(false);
+    }
+  };
+
+  const handleVerifyBoth = async () => {
+    verifyNow.mutate();
+    await runLocalVerify();
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -69,15 +103,22 @@ export function Explorer() {
         </div>
         <Button
           variant="primary"
-          onClick={() => verifyNow.mutate()}
-          loading={verifyNow.isPending}
+          onClick={() => void handleVerifyBoth()}
+          loading={verifyNow.isPending || localVerifying}
         >
           <ShieldCheck size={15} aria-hidden />
           Verify chain integrity
         </Button>
       </header>
 
-      {report ? <VerifyResult report={report} /> : null}
+      {/* Dual-Attestation Panel */}
+      {(report || localReport) && (
+        <DualAttestationPanel
+          serverReport={report ?? null}
+          localReport={localReport}
+          localVerifying={localVerifying}
+        />
+      )}
 
       {/* --------------------------------------------------- integrity lab */}
       <Card>
@@ -145,171 +186,235 @@ export function Explorer() {
         ) : null}
       </Card>
 
-      {/* ---------------------------------------------------------- filter */}
-      <div className="flex flex-wrap gap-1.5">
-        <FilterChip active={family === 'all'} onClick={() => setFamily('all')}>
-          All families
-        </FilterChip>
-        {EVENT_FAMILIES.map((option) => (
-          <FilterChip key={option} active={family === option} onClick={() => setFamily(option)}>
-            {FAMILY_LABEL[option]}
-          </FilterChip>
-        ))}
+      {/* Tab switcher */}
+      <div className="flex gap-1 rounded-[var(--radius-card)] border border-hairline bg-parchment p-1">
+        <TabButton
+          active={activeTab === 'blocks'}
+          onClick={() => setActiveTab('blocks')}
+          icon={<Blocks size={14} aria-hidden />}
+        >
+          Ledger Blocks
+        </TabButton>
+        <TabButton
+          active={activeTab === 'topology'}
+          onClick={() => setActiveTab('topology')}
+          icon={<Network size={14} aria-hidden />}
+        >
+          Consensus &amp; Network Topology
+        </TabButton>
       </div>
 
-      {/* ---------------------------------------------------------- blocks */}
-      {blocksQuery.isPending ? (
-        <Spinner label="Loading the chain" />
-      ) : blocksQuery.isError ? (
-        <ErrorNote
-          title="Could not load the chain"
-          message={(blocksQuery.error as Error).message}
-        />
+      {activeTab === 'topology' ? (
+        <NetworkTopology />
       ) : (
-        <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
-          <table className="w-full min-w-[52rem] text-left text-[0.82rem]">
-            <thead>
-              <tr>
-                {['#', 'Event', 'Factory', 'Submitted by', 'Previous hash', 'Block hash', 'Status', 'Integrity'].map(
-                  (heading) => (
-                    <th
-                      key={heading}
-                      scope="col"
-                      className="border-b border-hairline px-3 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted"
-                    >
-                      {heading}
-                    </th>
-                  ),
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {[...blocksQuery.data.blocks].reverse().map((block) => {
-                const check = checks.get(block.index);
-                const broken = check
-                  ? !check.hashValid || !check.linkValid || !check.signatureValid
-                  : false;
-                const downstream = check?.invalidatedByEarlierBreak ?? false;
+        <>
+          {/* ---------------------------------------------------------- filter */}
+          <div className="flex flex-wrap gap-1.5">
+            <FilterChip active={family === 'all'} onClick={() => setFamily('all')}>
+              All families
+            </FilterChip>
+            {EVENT_FAMILIES.map((option) => (
+              <FilterChip key={option} active={family === option} onClick={() => setFamily(option)}>
+                {FAMILY_LABEL[option]}
+              </FilterChip>
+            ))}
+          </div>
 
-                return (
-                  <tr
-                    key={block.index}
-                    className={cx(
-                      'transition-colors hover:bg-parchment/60',
-                      broken && 'bg-clay-soft/70',
-                      !broken && downstream && 'bg-gold-soft/40',
+          {/* ---------------------------------------------------------- blocks */}
+          {blocksQuery.isPending ? (
+            <Spinner label="Loading the chain" />
+          ) : blocksQuery.isError ? (
+            <ErrorNote
+              title="Could not load the chain"
+              message={(blocksQuery.error as Error).message}
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
+              <table className="w-full min-w-[52rem] text-left text-[0.82rem]">
+                <thead>
+                  <tr>
+                    {['#', 'Event', 'Factory', 'Submitted by', 'Previous hash', 'Block hash', 'Status', 'Integrity'].map(
+                      (heading) => (
+                        <th
+                          key={heading}
+                          scope="col"
+                          className="border-b border-hairline px-3 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted"
+                        >
+                          {heading}
+                        </th>
+                      ),
                     )}
-                  >
-                    <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
-                      {block.index}
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5">
-                      <Link
-                        to={`/record/${encodeURIComponent(block.event_id)}`}
-                        viewTransition
-                        className="font-medium text-navy hover:underline"
-                      >
-                        {eventLabel(block.event_type)}
-                      </Link>
-                      <p className="text-[0.7rem] text-ink-faint">{dateTimeOf(block.timestamp)}</p>
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                      {block.factory_name}
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                      {block.submitter_name}
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5">
-                      <HashText value={block.previous_block_hash} label="Previous hash" lead={6} tail={4} />
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5">
-                      <HashText value={block.block_hash} label="Block hash" lead={6} tail={4} />
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5">
-                      <StatusBadge status={block.status} size="sm" compact />
-                    </td>
-                    <td className="border-b border-hairline/60 px-3 py-2.5">
-                      <IntegrityCell check={check} />
-                    </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {[...blocksQuery.data.blocks].reverse().map((block) => {
+                    const check = checks.get(block.index);
+                    const broken = check
+                      ? !check.hashValid || !check.linkValid || !check.signatureValid
+                      : false;
+                    const downstream = check?.invalidatedByEarlierBreak ?? false;
+
+                    return (
+                      <tr
+                        key={block.index}
+                        className={cx(
+                          'transition-colors hover:bg-parchment/60',
+                          broken && 'bg-clay-soft/70',
+                          !broken && downstream && 'bg-gold-soft/40',
+                        )}
+                      >
+                        <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
+                          {block.index}
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5">
+                          <Link
+                            to={`/record/${encodeURIComponent(block.event_id)}`}
+                            viewTransition
+                            className="font-medium text-navy hover:underline"
+                          >
+                            {eventLabel(block.event_type)}
+                          </Link>
+                          <p className="text-[0.7rem] text-ink-faint">{dateTimeOf(block.timestamp)}</p>
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                          {block.factory_name}
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                          {block.submitter_name}
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5">
+                          <HashText value={block.previous_block_hash} label="Previous hash" lead={6} tail={4} />
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5">
+                          <HashText value={block.block_hash} label="Block hash" lead={6} tail={4} />
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5">
+                          <StatusBadge status={block.status} size="sm" compact />
+                        </td>
+                        <td className="border-b border-hairline/60 px-3 py-2.5">
+                          <IntegrityCell check={check} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- Dual-Attestation Panel */
+
+function DualAttestationPanel({
+  serverReport,
+  localReport,
+  localVerifying,
+}: {
+  serverReport: ChainReport | null;
+  localReport: LocalVerifyReport | null;
+  localVerifying: boolean;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {/* Server attestation */}
+      <div
+        className={cx(
+          'rounded-[var(--radius-card)] border p-4',
+          serverReport
+            ? serverReport.ok
+              ? 'border-teal/30 bg-teal-soft'
+              : 'border-clay/30 bg-clay-soft'
+            : 'border-hairline bg-surface',
+        )}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Globe size={16} className="shrink-0 text-ink-muted" aria-hidden />
+          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted">
+            Server Report
+          </p>
+        </div>
+        {serverReport ? (
+          <>
+            <p
+              className={cx(
+                'flex items-center gap-2 font-semibold text-[0.9rem]',
+                serverReport.ok ? 'text-teal' : 'text-clay',
+              )}
+            >
+              {serverReport.ok ? <ShieldCheck size={16} aria-hidden /> : <ShieldAlert size={16} aria-hidden />}
+              {serverReport.ok ? '200 OK (Clean)' : 'Integrity Failure Reported'}
+            </p>
+            <p className="mt-1 text-[0.74rem] text-ink-muted">
+              {serverReport.height} blocks · checked at server
+            </p>
+            <p className="mt-0.5 text-[0.7rem] text-ink-faint">
+              ⚠ Server-side only — a corrupted server can report false results
+            </p>
+          </>
+        ) : (
+          <p className="text-[0.82rem] text-ink-muted">Run verification to see server report.</p>
+        )}
+      </div>
+
+      {/* Client-side attestation */}
+      <div
+        className={cx(
+          'rounded-[var(--radius-card)] border p-4',
+          localVerifying
+            ? 'border-gold/30 bg-gold-soft/40'
+            : localReport
+              ? localReport.ok
+                ? 'border-teal/30 bg-teal-soft'
+                : 'border-clay/30 bg-clay-soft'
+              : 'border-hairline bg-surface',
+        )}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Shield size={16} className="shrink-0 text-ink-muted" aria-hidden />
+          <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-ink-muted">
+            Local Client Verification
+          </p>
+        </div>
+        {localVerifying ? (
+          <p className="flex items-center gap-2 text-[0.88rem] font-semibold text-[#8a6d24]">
+            <Loader2 size={15} className="animate-spin" aria-hidden />
+            Running in-browser…
+          </p>
+        ) : localReport ? (
+          <>
+            <p
+              className={cx(
+                'flex items-center gap-2 font-semibold text-[0.9rem]',
+                localReport.ok ? 'text-teal' : 'text-clay',
+              )}
+            >
+              {localReport.ok ? <ShieldCheck size={16} aria-hidden /> : <ShieldAlert size={16} aria-hidden />}
+              {localReport.ok
+                ? `${localReport.height}/${localReport.height} Blocks Verified on this Device`
+                : `${localReport.brokenCount} Block${localReport.brokenCount !== 1 ? 's' : ''} Failed`}
+            </p>
+            <p className="mt-1 text-[0.74rem] text-ink-muted">
+              {localReport.durationMs}ms · SHA-256 + ECDSA P-256 · window.crypto.subtle
+            </p>
+            <p className="mt-0.5 text-[0.7rem] text-teal">
+              ✓ Mathematically verified in this browser — server cannot falsify this result
+            </p>
+          </>
+        ) : (
+          <p className="text-[0.82rem] text-ink-muted">
+            Click &quot;Verify chain integrity&quot; to run local cryptographic proof.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
 /* ------------------------------------------------------------ fragments */
-
-function VerifyResult({ report }: { report: ChainReport }) {
-  const ok = report.ok;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cx(
-        'rounded-[var(--radius-card)] border p-5',
-        ok ? 'border-teal/30 bg-teal-soft' : 'border-clay/30 bg-clay-soft',
-      )}
-    >
-      <div className="flex items-start gap-3">
-        {ok ? (
-          <ShieldCheck size={22} className="mt-0.5 shrink-0 text-teal" aria-hidden />
-        ) : (
-          <ShieldAlert size={22} className="mt-0.5 shrink-0 text-clay" aria-hidden />
-        )}
-        <div className="min-w-0 flex-1">
-          <h2 className={cx('font-display text-lg', ok ? 'text-teal' : 'text-clay')}>
-            {ok ? 'Chain integrity verified' : 'Chain integrity broken'}
-          </h2>
-          <p className="mt-1 text-[0.85rem] leading-relaxed text-ink">
-            {ok ? (
-              <>
-                All {report.height} blocks recomputed to their stored hashes, every block links to
-                the one before it, and every signature verifies against its submitter&rsquo;s
-                registered key.
-              </>
-            ) : (
-              <>
-                The chain breaks at block{' '}
-                <span className="font-medium tabular">{report.firstBreakIndex}</span>. Because each
-                block anchors to the one before it, that break invalidates{' '}
-                <span className="font-medium tabular">{report.brokenCount}</span> of{' '}
-                {report.height} blocks — the altered record and everything written after it.
-              </>
-            )}
-          </p>
-          <p className="mt-2 text-[0.72rem] text-ink-muted">
-            Checked {dateTimeOf(report.checkedAt)}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <Stat label="Height" value={report.height} />
-        <Stat
-          label="Hashes valid"
-          value={report.blocks.filter((b) => b.hashValid).length}
-          tone={report.blocks.every((b) => b.hashValid) ? 'teal' : 'clay'}
-        />
-        <Stat
-          label="Links valid"
-          value={report.blocks.filter((b) => b.linkValid).length}
-          tone={report.blocks.every((b) => b.linkValid) ? 'teal' : 'clay'}
-        />
-        <Stat
-          label="Signatures valid"
-          value={report.blocks.filter((b) => b.signatureValid).length}
-          tone={report.blocks.every((b) => b.signatureValid) ? 'teal' : 'clay'}
-        />
-      </div>
-    </div>
-  );
-}
 
 function IntegrityCell({ check }: { check: BlockCheck | undefined }) {
   if (!check) {
@@ -397,6 +502,34 @@ function FilterChip({
           : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
       )}
     >
+      {children}
+    </button>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cx(
+        'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2 text-[0.82rem] font-medium transition-colors',
+        active
+          ? 'bg-surface text-navy shadow-[var(--shadow-card)]'
+          : 'text-ink-muted hover:text-navy',
+      )}
+    >
+      {icon}
       {children}
     </button>
   );

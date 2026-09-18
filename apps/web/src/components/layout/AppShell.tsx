@@ -6,7 +6,10 @@ import {
   Boxes,
   ChevronDown,
   FileText,
+  Globe,
+  KeyRound,
   LayoutDashboard,
+  Lock,
   LogOut,
   Menu,
   Receipt,
@@ -20,6 +23,7 @@ import type { LucideIcon } from 'lucide-react';
 import { ROLE_LABEL } from '@breadcrumbs/shared';
 
 import { useSession } from '../../store/session.ts';
+import { usePrivacy } from '../../store/privacyStore.ts';
 import { Button, cx } from '../ui/primitives.tsx';
 import { ChainStatusPill } from '../ledger/ChainStatusPill.tsx';
 
@@ -84,6 +88,15 @@ function navForRole(role: string | undefined, factoryId: string | null | undefin
       { to: '/app/contracts', label: 'Contracts', icon: FileText },
       { to: '/app/invoices', label: 'Invoices', icon: Receipt },
       { to: '/app/payments', label: 'Payments', icon: Wallet },
+    ],
+  });
+
+  // Security group
+  entries.push({
+    label: 'Security',
+    icon: KeyRound,
+    items: [
+      { to: '/app/security', label: 'Key Management', icon: KeyRound },
     ],
   });
 
@@ -432,6 +445,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="ml-auto flex items-center gap-2">
             <ChainStatusPill />
 
+            {/* Privacy / View Mode Toggle */}
+            {identity && <PrivacyToggle />}
+
             {identity ? (
               <div className="hidden items-center gap-2 sm:flex">
                 {/* User badge */}
@@ -527,5 +543,43 @@ export function BreadcrumbsMark({ size = 26 }: { size?: number }) {
       <circle cx="19.4" cy="14" r="2.7" fill="#F7F5EF" />
       <path d="M8.6 14h10.8" stroke="#F7F5EF" strokeOpacity="0.45" strokeWidth="1.1" />
     </svg>
+  );
+}
+
+/**
+ * Privacy / View-Mode Toggle.
+ *
+ * Appears in the navbar when signed in. Demonstrates the ZKP privacy architecture:
+ * public mode shows ZK-proof compliance badges; authorized mode reveals actual values.
+ */
+function PrivacyToggle() {
+  const { viewMode, toggle } = usePrivacy();
+  const isPublic = viewMode === 'public';
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={isPublic ? 'Switch to Authorized Brand view (reveals confidential data)' : 'Switch to Public / Auditor view (shows ZK-proof badges)'}
+      className={cx(
+        'hidden items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1 text-[0.72rem] font-medium transition-colors sm:inline-flex',
+        isPublic
+          ? 'border-[#4B3B6A]/30 bg-[#1e1030]/6 text-[#5b3fa8] hover:bg-[#1e1030]/10'
+          : 'border-teal/30 bg-teal-soft text-teal hover:bg-teal/15',
+      )}
+      aria-pressed={!isPublic}
+    >
+      {isPublic ? (
+        <>
+          <Globe size={11} aria-hidden />
+          Public View
+        </>
+      ) : (
+        <>
+          <Lock size={11} aria-hidden />
+          Authorized View
+        </>
+      )}
+    </button>
   );
 }

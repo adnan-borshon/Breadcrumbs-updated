@@ -139,38 +139,64 @@ export function InventoryItemPage() {
               const quantity = record.data_fields['quantity'];
               const inflow =
                 record.event_type === 'material_receipt' || record.event_type === 'chemical_receipt';
+              const isStockAdj = record.event_type === 'stock_adjustment';
 
               return (
                 <li
                   key={record.event_id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                  className={cx(
+                    'px-5 py-3',
+                    isStockAdj ? 'bg-gold-soft/30' : '',
+                  )}
                 >
-                  <div className="min-w-0">
-                    <Link
-                      to={`/record/${encodeURIComponent(record.event_id)}`}
-                      viewTransition
-                      className="text-[0.85rem] font-medium text-navy hover:underline"
-                    >
-                      {eventLabel(record.event_type)}
-                    </Link>
-                    <p className="text-[0.74rem] text-ink-muted">
-                      {dateTimeOf(record.timestamp)} · {record.submitter_name}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {typeof quantity === 'number' ? (
-                      <span
-                        className={cx(
-                          'tabular text-[0.85rem] font-medium',
-                          inflow ? 'text-teal' : 'text-ink',
-                        )}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        to={`/record/${encodeURIComponent(record.event_id)}`}
+                        viewTransition
+                        className="text-[0.85rem] font-medium text-navy hover:underline"
                       >
-                        {inflow ? '+' : '−'}
-                        {Math.abs(quantity).toLocaleString('en-US')} {item.unit}
-                      </span>
-                    ) : null}
-                    <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
+                        {eventLabel(record.event_type)}
+                      </Link>
+                      <p className="text-[0.74rem] text-ink-muted">
+                        {dateTimeOf(record.timestamp)} · {record.submitter_name}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {typeof quantity === 'number' ? (
+                        <span
+                          className={cx(
+                            'tabular text-[0.85rem] font-medium',
+                            inflow ? 'text-teal' : 'text-ink',
+                          )}
+                        >
+                          {inflow ? '+' : '−'}
+                          {Math.abs(quantity).toLocaleString('en-US')} {item.unit}
+                        </span>
+                      ) : null}
+                      <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
+                    </div>
                   </div>
+                  {isStockAdj && (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-gold/40 bg-gold-soft px-3 py-2 text-[0.73rem]">
+                      <AlertTriangle size={13} className="mt-0.5 shrink-0 text-[#8a6d24]" aria-hidden />
+                      <div>
+                        <p className="font-semibold text-[#8a6d24]">
+                          ⚠ Manual Stock Correction
+                          {typeof quantity === 'number'
+                            ? `: ${quantity > 0 ? '+' : ''}${quantity.toLocaleString('en-US')} ${item.unit}`
+                            : ''}
+                        </p>
+                        <p className="mt-0.5 text-[#8a6d24]/80">
+                          Requires physical inventory count reconciliation. Manual overrides bypass
+                          the normal inflow/outflow chain and must be independently verified.
+                          {record.data_fields['reason']
+                            ? ` Stated reason: "${String(record.data_fields['reason'])}."`
+                            : ' No reason was provided.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}
