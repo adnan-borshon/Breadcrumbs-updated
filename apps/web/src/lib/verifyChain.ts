@@ -55,20 +55,13 @@ export interface RawBlock {
 
 /* ----------------------------------------------------------------- helpers */
 
-/** Convert a hex string to Uint8Array. */
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-  }
-  return bytes;
-}
-
 /** Convert a Base64-URL string to Uint8Array. */
-function b64urlToBytes(b64: string): Uint8Array {
+function b64urlToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
   const binary = atob(padded);
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 
 /** Stable JSON — keys sorted recursively, no extra whitespace. */
@@ -151,7 +144,7 @@ async function verifySignature(block: RawBlock): Promise<boolean | null> {
     const sigBytes = b64urlToBytes(block.signature);
     const payload = new TextEncoder().encode(signedPayload(block));
 
-    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, sigBytes, payload);
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, sigBytes.buffer.slice(sigBytes.byteOffset, sigBytes.byteOffset + sigBytes.byteLength), payload);
   } catch {
     return false;
   }

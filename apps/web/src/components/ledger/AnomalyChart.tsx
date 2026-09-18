@@ -77,10 +77,10 @@ export function AnomalyChart({
   }
 
   const pathD =
-    `M ${points[0][0]},${H - 10} ` +
-    `L ${points[0][0]},${points[0][1]} ` +
+    `M ${points[0]![0]},${H - 10} ` +
+    `L ${points[0]![0]},${points[0]![1]} ` +
     points.slice(1).map(([x, y]) => `L ${x},${y}`).join(' ') +
-    ` L ${points[points.length - 1][0]},${H - 10} Z`;
+    ` L ${points[points.length - 1]![0]},${H - 10} Z`;
 
   // Key x positions
   const xMean = toX(mean);
@@ -113,7 +113,7 @@ export function AnomalyChart({
           {/* Curve outline */}
           <path
             d={
-              `M ${points[0][0]},${points[0][1]} ` +
+              `M ${points[0]![0]},${points[0]![1]} ` +
               points.slice(1).map(([x, y]) => `L ${x},${y}`).join(' ')
             }
             fill="none"

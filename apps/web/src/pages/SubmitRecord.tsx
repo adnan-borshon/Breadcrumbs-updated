@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Check,
   CheckCircle2,
-  ChevronDown,
   FileText,
   Loader2,
   Cpu,
@@ -169,7 +168,7 @@ export function SubmitRecord() {
 
   // Oracle / physical attestation state
   const [iotSource, setIotSource] = useState<'manual' | 'iot'>('manual');
-  const [selectedDevice, setSelectedDevice] = useState(IOT_DEVICES[0]);
+  const [selectedDevice, setSelectedDevice] = useState(IOT_DEVICES[0]!);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [evidenceHash, setEvidenceHash] = useState<string | null>(null);
   const [hashingFile, setHashingFile] = useState(false);

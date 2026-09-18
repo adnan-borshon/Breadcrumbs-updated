@@ -112,8 +112,8 @@ export function NetworkTopology() {
           const reversed = Math.random() < 0.5;
           updated.push({
             id: pulseCounter++,
-            edgeFrom: reversed ? edge.to : edge.from,
-            edgeTo: reversed ? edge.from : edge.to,
+            edgeFrom: reversed ? edge!.to : edge!.from,
+            edgeTo: reversed ? edge!.from : edge!.to,
             t: 0,
           });
         }

@@ -12,17 +12,14 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
   Fingerprint,
   HardDriveDownload,
   Key,
-  KeyRound,
   Monitor,
   Shield,
   ShieldAlert,
   ShieldCheck,
   Trash2,
-  Usb,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 

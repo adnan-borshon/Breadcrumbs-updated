@@ -213,35 +213,6 @@ function DropdownMenu({
   );
 }
 
-/* ------------------------------------------------------------------ NavBar links */
-
-function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
-  return (
-    <>
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          viewTransition
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cx(
-              'inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors',
-              isActive
-                ? 'bg-navy/8 font-medium text-navy'
-                : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
-            )
-          }
-        >
-          <item.icon size={14} aria-hidden />
-          {item.label}
-        </NavLink>
-      ))}
-    </>
-  );
-}
-
 /* ------------------------------------------------------------------ Desktop nav */
 
 function DesktopNav({ entries }: { entries: NavEntry[] }) {
@@ -324,8 +295,8 @@ function MobileNav({
         {identity ? (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[0.82rem] font-medium text-navy">{identity.name}</p>
-              <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
+              <p className="text-[0.82rem] font-medium text-navy">{(identity as { name: string }).name}</p>
+              <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[(identity as { role: string }).role as keyof typeof ROLE_LABEL]}</p>
             </div>
             <Button size="sm" variant="outline" onClick={signOut}>
               Sign out
