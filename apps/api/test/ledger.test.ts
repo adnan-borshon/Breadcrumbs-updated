@@ -6,7 +6,7 @@ import { generateKeyPair, signRecord } from '@breadcrumbs/shared';
 
 import { commit, getHeight, LedgerError, verifyLedger } from '../src/chain/ledger.ts';
 import { getDb } from '../src/db/client.ts';
-import { blocks, pRecords } from '../src/db/schema.ts';
+import { blocks, deviceKeys, pRecords } from '../src/db/schema.ts';
 import { buildRecord, emptyLedger, makeFactory, makeSigner, sign, type TestSigner } from './helpers.ts';
 
 const INSPECTION = {
@@ -164,6 +164,20 @@ describe('non-repudiation', () => {
       }),
     ).rejects.toMatchObject({ status: 401, code: 'unknown_key' });
   });
+
+  it('refuses a revoked key', async () => {
+    const record = buildRecord(factoryUser, 'inspection', 'FAC-A', INSPECTION);
+    const db = getDb();
+    await db
+      .update(deviceKeys)
+      .set({ revokedAt: new Date().toISOString() })
+      .where(eq(deviceKeys.fingerprint, factoryUser.fingerprint));
+
+    await expect(commitAs(factoryUser, record)).rejects.toMatchObject({
+      status: 401,
+      code: 'key_revoked',
+    });
+  });
 });
 
 describe('validation', () => {
@@ -173,6 +187,19 @@ describe('validation', () => {
       status: 400,
       code: 'invalid_data_fields',
     });
+  });
+
+  it('accepts data_fields with attestation metadata (_source and evidence_hash)', async () => {
+    const record = buildRecord(factoryUser, 'inspection', 'FAC-A', {
+      ...INSPECTION,
+      _source: 'IoT:scale-001:CERT-IOT-2024-7712',
+      evidence_hash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    });
+    const result = await commitAs(factoryUser, record);
+    expect(result.block.record.data_fields._source).toBe('IoT:scale-001:CERT-IOT-2024-7712');
+    expect(result.block.record.data_fields.evidence_hash).toBe(
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    );
   });
 
   it('rejects data_fields that schema defaults would change, since the signature would not cover the stored value', async () => {
@@ -248,6 +275,23 @@ describe('governance is append-only', () => {
         }),
       ),
     ).rejects.toMatchObject({ status: 409, code: 'already_reviewed' });
+  });
+
+  it('allows a second independent auditor to add review confirmation', async () => {
+    const auditor2 = await makeSigner('u-aud-2', 'Michael Osei', 'auditor');
+    const target = buildRecord(factoryUser, 'inspection', 'FAC-A', INSPECTION);
+    await commitAs(factoryUser, target);
+
+    await commitAs(
+      auditor,
+      buildRecord(auditor, 'review_confirmed', 'FAC-A', { target_event_id: target.event_id, note: 'Auditor 1 check' }),
+    );
+
+    const review2 = await commitAs(
+      auditor2,
+      buildRecord(auditor2, 'review_confirmed', 'FAC-A', { target_event_id: target.event_id, note: 'Auditor 2 check' }),
+    );
+    expect(review2.block.record.submitter_id).toBe('u-aud-2');
   });
 });
 

@@ -76,6 +76,7 @@ export const deviceKeys = sqliteTable(
     fingerprint: text('fingerprint').notNull(),
     label: text('label').notNull(),
     createdAt: text('created_at').notNull(),
+    revokedAt: text('revoked_at'),
   },
   (table) => [
     uniqueIndex('device_keys_fingerprint_idx').on(table.fingerprint),
@@ -269,7 +270,8 @@ export const DDL: string[] = [
      public_key_json TEXT NOT NULL,
      fingerprint TEXT NOT NULL,
      label TEXT NOT NULL,
-     created_at TEXT NOT NULL
+     created_at TEXT NOT NULL,
+     revoked_at TEXT
    )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS device_keys_fingerprint_idx ON device_keys (fingerprint)`,
   `CREATE INDEX IF NOT EXISTS device_keys_identity_idx ON device_keys (identity_id)`,

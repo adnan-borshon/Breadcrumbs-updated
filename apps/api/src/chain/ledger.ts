@@ -214,11 +214,26 @@ async function assertPreconditions(record: SignedRecord, actor: ActorContext): P
       const targetId = str(fields, 'target_event_id');
       const [target] = await db.select().from(pRecords).where(eq(pRecords.eventId, targetId));
       if (!target) throw new LedgerError(422, 'unknown_record', `No record ${targetId}.`);
-      if (target.humanReviewStatus !== 'none') {
+
+      if (target.humanReviewStatus === 'disputed') {
         throw new LedgerError(
           409,
           'already_reviewed',
-          `Record ${targetId} was already ${target.humanReviewStatus}.`,
+          `Record ${targetId} was already disputed.`,
+        );
+      }
+
+      const priorReviews = await db
+        .select()
+        .from(blocks)
+        .where(eq(blocks.refId, targetId));
+
+      const hasVoted = priorReviews.some((b) => b.submitterId === actor.id) || target.reviewerId === actor.id;
+      if (hasVoted) {
+        throw new LedgerError(
+          409,
+          'already_reviewed',
+          `You have already recorded a review for record ${targetId}.`,
         );
       }
       return;
@@ -309,13 +324,16 @@ export async function commit(input: CommitInput): Promise<CommitResult> {
     );
   }
 
-  /* 5 — the signing key must be registered to this identity. */
+  /* 5 — the signing key must be registered to this identity and not revoked. */
   const [key] = await db.select().from(deviceKeys).where(eq(deviceKeys.fingerprint, keyFingerprint));
   if (!key) {
     throw new LedgerError(401, 'unknown_key', 'That signing key is not registered.');
   }
   if (key.identityId !== actor.id) {
     throw new LedgerError(401, 'key_owner_mismatch', 'That signing key belongs to another identity.');
+  }
+  if (key.revokedAt) {
+    throw new LedgerError(401, 'key_revoked', 'That signing key has been revoked.');
   }
 
   /* 6 — the signature must verify. Nothing reaches the chain unverified. */

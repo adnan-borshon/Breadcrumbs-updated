@@ -23,9 +23,15 @@ const quantity = z.number().finite().positive();
 const minorAmount = z.number().int().nonnegative();
 const currency = z.enum(['USD', 'EUR', 'BDT']);
 
+const attestationMetadata = {
+  _source: z.string().optional(),
+  evidence_hash: z.string().optional(),
+};
+
 /* ------------------------------------------------------------------ audit */
 
 const inspection = z.object({
+  ...attestationMetadata,
   inspection_type: nonEmpty,
   workers_present: z.number().int().nonnegative(),
   working_hours: z.number().finite().nonnegative(),
@@ -35,6 +41,7 @@ const inspection = z.object({
 });
 
 const productionReport = z.object({
+  ...attestationMetadata,
   order_ref: nonEmpty,
   units_produced: z.number().int().nonnegative(),
   working_hours: z.number().finite().nonnegative(),
@@ -43,6 +50,7 @@ const productionReport = z.object({
 });
 
 const certification = z.object({
+  ...attestationMetadata,
   standard: nonEmpty,
   certificate_no: nonEmpty,
   issued_by: nonEmpty,
@@ -51,6 +59,7 @@ const certification = z.object({
 });
 
 const shipment = z.object({
+  ...attestationMetadata,
   shipment_ref: nonEmpty,
   destination: nonEmpty,
   carrier: nonEmpty,
@@ -62,6 +71,7 @@ const shipment = z.object({
 /* -------------------------------------------------------------- inventory */
 
 const materialReceipt = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   quantity,
   unit_cost_minor: minorAmount,
@@ -71,6 +81,7 @@ const materialReceipt = z.object({
 });
 
 const materialIssue = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   quantity,
   order_ref: nonEmpty,
@@ -78,6 +89,7 @@ const materialIssue = z.object({
 });
 
 const chemicalReceipt = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   quantity,
   supplier: nonEmpty,
@@ -87,6 +99,7 @@ const chemicalReceipt = z.object({
 });
 
 const chemicalConsumption = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   quantity,
   /** Denominator for the mass-balance rule. */
@@ -95,6 +108,7 @@ const chemicalConsumption = z.object({
 });
 
 const stockAdjustment = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   /** Signed — a correction can go either way. */
   quantity: z.number().finite(),
@@ -102,6 +116,7 @@ const stockAdjustment = z.object({
 });
 
 const chemicalDisposal = z.object({
+  ...attestationMetadata,
   sku: nonEmpty,
   quantity,
   disposal_method: nonEmpty,
@@ -111,6 +126,7 @@ const chemicalDisposal = z.object({
 /* -------------------------------------------------------------- contracts */
 
 const contractCreated = z.object({
+  ...attestationMetadata,
   contract_id: nonEmpty,
   title: nonEmpty,
   brand_id: nonEmpty,
@@ -125,16 +141,19 @@ const contractCreated = z.object({
 });
 
 const contractSigned = z.object({
+  ...attestationMetadata,
   contract_id: nonEmpty,
 });
 
 const contractAmended = z.object({
+  ...attestationMetadata,
   contract_id: nonEmpty,
   note: nonEmpty,
   value_minor_delta: z.number().int(),
 });
 
 const contractClosed = z.object({
+  ...attestationMetadata,
   contract_id: nonEmpty,
   reason: nonEmpty,
 });
@@ -150,6 +169,7 @@ const lineItem = z.object({
 
 const invoiceIssued = z
   .object({
+    ...attestationMetadata,
     invoice_id: nonEmpty,
     contract_id: nonEmpty,
     currency,
@@ -168,15 +188,16 @@ const invoiceIssued = z
     { message: 'subtotal_minor must equal the sum of line item amounts', path: ['subtotal_minor'] },
   );
 
-const invoiceApproved = z.object({ invoice_id: nonEmpty });
+const invoiceApproved = z.object({ ...attestationMetadata, invoice_id: nonEmpty });
 
-const invoiceDisputed = z.object({ invoice_id: nonEmpty, reason: nonEmpty });
+const invoiceDisputed = z.object({ ...attestationMetadata, invoice_id: nonEmpty, reason: nonEmpty });
 
-const invoiceSettled = z.object({ invoice_id: nonEmpty });
+const invoiceSettled = z.object({ ...attestationMetadata, invoice_id: nonEmpty });
 
 /* --------------------------------------------------------------- payments */
 
 const paymentInitiated = z.object({
+  ...attestationMetadata,
   payment_id: nonEmpty,
   invoice_id: nonEmpty,
   amount_minor: z.number().int().positive(),
@@ -186,12 +207,14 @@ const paymentInitiated = z.object({
 });
 
 const paymentSettled = z.object({
+  ...attestationMetadata,
   payment_id: nonEmpty,
   invoice_id: nonEmpty,
   amount_minor: z.number().int().positive(),
 });
 
 const paymentFailed = z.object({
+  ...attestationMetadata,
   payment_id: nonEmpty,
   invoice_id: nonEmpty,
   reason: nonEmpty,
@@ -200,11 +223,13 @@ const paymentFailed = z.object({
 /* ------------------------------------------------------------- governance */
 
 const reviewConfirmed = z.object({
+  ...attestationMetadata,
   target_event_id: nonEmpty,
   note: z.string().default(''),
 });
 
 const reviewDisputed = z.object({
+  ...attestationMetadata,
   target_event_id: nonEmpty,
   note: nonEmpty,
 });

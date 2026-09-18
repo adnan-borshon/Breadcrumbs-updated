@@ -263,4 +263,22 @@ describe('negative stock', () => {
     );
     expect(result.flagged).toBe(false);
   });
+
+  it('flags a negative stock adjustment larger than on-hand stock', () => {
+    const result = runAnomalyCheck(
+      candidate('stock_adjustment', { sku: 'FAB-CTN-180', quantity: -2500, reason: 'Physical audit shrinkage' }),
+      ctx({ stockOnHand: () => 1200 }),
+    );
+    expect(result.flagged).toBe(true);
+    expect(result.rule).toBe('negative_stock');
+    expect(result.reason).toContain('drives inventory negative');
+  });
+
+  it('passes a positive stock adjustment regardless of current stock', () => {
+    const result = runAnomalyCheck(
+      candidate('stock_adjustment', { sku: 'FAB-CTN-180', quantity: 5000, reason: 'Surplus found' }),
+      ctx({ stockOnHand: () => 0 }),
+    );
+    expect(result.flagged).toBe(false);
+  });
 });

@@ -356,21 +356,28 @@ function paymentMismatch(record: CandidateRecord, ctx: AnomalyContext): AnomalyR
 /** A movement that would drive stock below zero describes something that cannot have happened. */
 function negativeStock(record: CandidateRecord, ctx: AnomalyContext): AnomalyResult | null {
   const outflows: EventType[] = ['material_issue', 'chemical_consumption', 'chemical_disposal'];
-  if (!outflows.includes(record.event_type)) return null;
+  const isAdjustment = record.event_type === 'stock_adjustment';
+  if (!outflows.includes(record.event_type) && !isAdjustment) return null;
 
   const sku = text(record.data_fields, 'sku');
   const quantity = numeric(record.data_fields, 'quantity');
   if (!sku || quantity === null) return null;
 
+  // Positive stock adjustments increase inventory and cannot cause negative stock
+  if (isAdjustment && quantity >= 0) return CLEAN;
+  const outflow = isAdjustment ? -quantity : quantity;
+
   const onHand = ctx.stockOnHand(record.factory_id, sku);
-  if (quantity <= onHand) return CLEAN;
+  if (outflow <= onHand) return CLEAN;
 
   return {
     flagged: true,
-    score: round(onHand > 0 ? quantity / onHand : 2),
+    score: round(onHand > 0 ? outflow / onHand : 2),
     rule: 'negative_stock',
     note: null,
-    reason: `Movement of ${quantity} exceeds recorded stock of ${onHand} for ${sku} — the ledger has no record of this quantity arriving.`,
+    reason: `Movement of ${outflow} exceeds recorded stock of ${onHand} for ${sku} — ${
+      isAdjustment ? 'stock adjustment drives inventory negative' : 'the ledger has no record of this quantity arriving'
+    }.`,
   };
 }
 

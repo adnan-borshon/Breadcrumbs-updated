@@ -35,8 +35,15 @@ export function getDb(): Database {
 export async function applySchema(): Promise<void> {
   const raw = getClient();
   await raw.execute('PRAGMA foreign_keys = ON');
+  await raw.execute('PRAGMA journal_mode = WAL');
+  await raw.execute('PRAGMA busy_timeout = 5000');
   for (const statement of schema.DDL) {
     await raw.execute(statement);
+  }
+  try {
+    await raw.execute('ALTER TABLE device_keys ADD COLUMN revoked_at TEXT');
+  } catch {
+    // Column already exists or table was created with it
   }
 }
 

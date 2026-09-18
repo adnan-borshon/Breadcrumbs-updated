@@ -26,6 +26,7 @@ import { useSession } from '../../store/session.ts';
 import { usePrivacy } from '../../store/privacyStore.ts';
 import { Button, cx } from '../ui/primitives.tsx';
 import { ChainStatusPill } from '../ledger/ChainStatusPill.tsx';
+import type { Identity } from '../../lib/api.ts';
 
 interface NavItem {
   to: string;
@@ -254,7 +255,7 @@ function MobileNav({
   onClose,
 }: {
   entries: NavEntry[];
-  identity: ReturnType<typeof useSession>['identity'];
+  identity: Identity | null;
   signOut: () => void;
   onClose: () => void;
 }) {
@@ -295,8 +296,8 @@ function MobileNav({
         {identity ? (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[0.82rem] font-medium text-navy">{(identity as { name: string }).name}</p>
-              <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[(identity as { role: string }).role as keyof typeof ROLE_LABEL]}</p>
+              <p className="text-[0.82rem] font-medium text-navy">{identity.name}</p>
+              <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
             </div>
             <Button size="sm" variant="outline" onClick={signOut}>
               Sign out

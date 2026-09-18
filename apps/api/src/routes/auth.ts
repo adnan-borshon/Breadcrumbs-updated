@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { publicKeyFingerprint, canonicalJson } from '@breadcrumbs/shared';
+import { publicKeyFingerprint, canonicalJson, verifyPayload } from '@breadcrumbs/shared';
 
 import { getDb } from '../db/client.ts';
 import { deviceKeys, identities } from '../db/schema.ts';
@@ -57,6 +57,7 @@ authRoutes.post('/login', async (c) => {
 const registerKeySchema = z.object({
   public_key_jwk: z.object({}).loose(),
   label: z.string().min(1).max(80).default('Browser device'),
+  pop_signature: z.string().optional(),
 });
 
 /**
@@ -65,6 +66,7 @@ const registerKeySchema = z.object({
  * Only the public half ever arrives here — the private key is generated non-extractable
  * in the browser and cannot leave it. Registering the same key twice is a no-op, so a
  * returning device just re-announces itself.
+ * If pop_signature is provided, it verifies proof-of-possession of the private key.
  */
 authRoutes.post('/register-key', requireAuth, async (c) => {
   const actor = c.get('actor');
@@ -80,6 +82,15 @@ authRoutes.post('/register-key', requireAuth, async (c) => {
       'private_key_submitted',
       'That JWK contains a private key. Only the public half may be registered.',
     );
+  }
+
+  // Optional Proof-of-Possession: verifies caller holds the private key
+  if (body.pop_signature) {
+    const challenge = canonicalJson({ action: 'register-key', identity_id: actor.id });
+    const popValid = await verifyPayload(jwk, challenge, body.pop_signature);
+    if (!popValid) {
+      throw new LedgerError(401, 'bad_pop_signature', 'Proof-of-possession signature failed to verify.');
+    }
   }
 
   const fingerprint = await publicKeyFingerprint(jwk);
@@ -104,9 +115,46 @@ authRoutes.post('/register-key', requireAuth, async (c) => {
     fingerprint,
     label: body.label,
     createdAt: new Date().toISOString(),
+    revokedAt: null,
   });
 
   return c.json({ fingerprint, label: body.label, reused: false }, 201);
+});
+
+const revokeKeySchema = z.object({
+  fingerprint: z.string().min(1),
+});
+
+/**
+ * Revokes a registered key so it can no longer sign on-chain transactions.
+ */
+authRoutes.post('/revoke-key', requireAuth, async (c) => {
+  const actor = c.get('actor');
+  const body = revokeKeySchema.parse(await c.req.json());
+  const db = getDb();
+
+  const [key] = await db
+    .select()
+    .from(deviceKeys)
+    .where(eq(deviceKeys.fingerprint, body.fingerprint));
+
+  if (!key) {
+    throw new LedgerError(404, 'unknown_key', 'That signing key is not registered.');
+  }
+  if (key.identityId !== actor.id) {
+    throw new LedgerError(403, 'not_key_owner', 'You do not own that key.');
+  }
+  if (key.revokedAt) {
+    return c.json({ fingerprint: key.fingerprint, revoked: true, already_revoked: true });
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .update(deviceKeys)
+    .set({ revokedAt: now })
+    .where(eq(deviceKeys.fingerprint, body.fingerprint));
+
+  return c.json({ fingerprint: key.fingerprint, revoked: true, revoked_at: now });
 });
 
 authRoutes.get('/me', requireAuth, async (c) => {
@@ -127,6 +175,8 @@ authRoutes.get('/me', requireAuth, async (c) => {
       fingerprint: k.fingerprint,
       label: k.label,
       created_at: k.createdAt,
+      status: k.revokedAt ? ('revoked' as const) : ('active' as const),
+      revoked_at: k.revokedAt ?? null,
     })),
   });
 });
