@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import {
   Beaker,
   Blocks,
   Boxes,
+  ChevronDown,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -29,33 +30,177 @@ interface NavItem {
   end?: boolean;
 }
 
+interface NavGroup {
+  label: string;
+  icon: LucideIcon;
+  items: NavItem[];
+}
+
+type NavEntry = NavItem | NavGroup;
+
+function isGroup(entry: NavEntry): entry is NavGroup {
+  return 'items' in entry;
+}
+
+/** Items always shown to anonymous visitors */
 const PUBLIC_NAV: NavItem[] = [
   { to: '/explorer', label: 'Explorer', icon: Blocks },
   { to: '/lookup', label: 'Public lookup', icon: Search },
 ];
 
-function navForRole(role: string | undefined, factoryId: string | null | undefined): NavItem[] {
-  const items: NavItem[] = [{ to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true }];
+/** Build role-aware navigation with grouped menus */
+function navForRole(role: string | undefined, factoryId: string | null | undefined): NavEntry[] {
+  const entries: NavEntry[] = [
+    { to: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  ];
 
+  // Records group
+  const recordItems: NavItem[] = [];
   if (role === 'factory') {
-    items.push({ to: '/app/submit', label: 'Submit record', icon: ScrollText });
+    recordItems.push({ to: '/app/submit', label: 'Submit Record', icon: ScrollText });
   }
   if (role === 'auditor') {
-    items.push({ to: '/app/review', label: 'Review queue', icon: ShieldCheck });
+    recordItems.push({ to: '/app/review', label: 'Review Queue', icon: ShieldCheck });
   }
+  recordItems.push({ to: '/app/transactions', label: 'Transactions', icon: Blocks });
 
-  items.push(
-    { to: '/app/inventory/materials', label: 'Materials', icon: Boxes },
-    { to: '/app/inventory/chemicals', label: 'Chemicals', icon: Beaker },
-    { to: '/app/contracts', label: 'Contracts', icon: FileText },
-    { to: '/app/invoices', label: 'Invoices', icon: Receipt },
-    { to: '/app/payments', label: 'Payments', icon: Wallet },
-    { to: '/app/transactions', label: 'Transactions', icon: Blocks },
-  );
+  entries.push({ label: 'Records', icon: ScrollText, items: recordItems });
+
+  // Inventory group
+  entries.push({
+    label: 'Inventory',
+    icon: Boxes,
+    items: [
+      { to: '/app/inventory/materials', label: 'Materials', icon: Boxes },
+      { to: '/app/inventory/chemicals', label: 'Chemicals', icon: Beaker },
+    ],
+  });
+
+  // Commerce group
+  entries.push({
+    label: 'Commerce',
+    icon: FileText,
+    items: [
+      { to: '/app/contracts', label: 'Contracts', icon: FileText },
+      { to: '/app/invoices', label: 'Invoices', icon: Receipt },
+      { to: '/app/payments', label: 'Payments', icon: Wallet },
+    ],
+  });
 
   void factoryId;
-  return items;
+  return entries;
 }
+
+/* ------------------------------------------------------------------ Dropdown */
+
+function DropdownMenu({
+  group,
+  onNavigate,
+}: {
+  group: NavGroup;
+  onNavigate?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  // Close when route changes
+  useEffect(() => {
+    setOpen(false);
+  }, [location.pathname]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  const isAnyActive = group.items.some((item) => {
+    if (item.end) return location.pathname === item.to;
+    return location.pathname.startsWith(item.to);
+  });
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className={cx(
+          'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors select-none',
+          isAnyActive
+            ? 'bg-navy/8 font-medium text-navy'
+            : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+        )}
+      >
+        <group.icon size={14} aria-hidden />
+        {group.label}
+        <ChevronDown
+          size={12}
+          aria-hidden
+          className={cx('transition-transform duration-150', open && 'rotate-180')}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className={cx(
+            'absolute left-0 top-full z-50 mt-1.5 min-w-[11rem] rounded-lg',
+            'border border-hairline bg-surface shadow-[var(--shadow-raised)]',
+            'py-1',
+            'animate-in',
+          )}
+          style={{ animation: 'dropdown-in 0.13s var(--ease-out-soft) both' }}
+        >
+          {group.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              viewTransition
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onNavigate?.();
+              }}
+              className={({ isActive }) =>
+                cx(
+                  'flex items-center gap-2.5 px-3.5 py-2 text-[0.82rem] transition-colors',
+                  isActive
+                    ? 'bg-navy/6 font-medium text-navy'
+                    : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+                )
+              }
+            >
+              <item.icon size={14} aria-hidden />
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ NavBar links */
 
 function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   return (
@@ -84,6 +229,170 @@ function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => 
   );
 }
 
+/* ------------------------------------------------------------------ Desktop nav */
+
+function DesktopNav({ entries }: { entries: NavEntry[] }) {
+  return (
+    <nav aria-label="Main" className="ml-4 hidden flex-1 items-center gap-0.5 lg:flex">
+      {entries.map((entry) =>
+        isGroup(entry) ? (
+          <DropdownMenu key={entry.label} group={entry} />
+        ) : (
+          <NavLink
+            key={entry.to}
+            to={entry.to}
+            end={entry.end}
+            viewTransition
+            className={({ isActive }) =>
+              cx(
+                'inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors',
+                isActive
+                  ? 'bg-navy/8 font-medium text-navy'
+                  : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+              )
+            }
+          >
+            <entry.icon size={14} aria-hidden />
+            {entry.label}
+          </NavLink>
+        ),
+      )}
+    </nav>
+  );
+}
+
+/* ------------------------------------------------------------------ Mobile nav */
+
+function MobileNav({
+  entries,
+  identity,
+  signOut,
+  onClose,
+}: {
+  entries: NavEntry[];
+  identity: ReturnType<typeof useSession>['identity'];
+  signOut: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <nav
+      id="mobile-nav"
+      aria-label="Main"
+      className="border-t border-hairline bg-surface px-4 py-3 lg:hidden"
+    >
+      <div className="flex flex-col gap-0.5">
+        {entries.map((entry) =>
+          isGroup(entry) ? (
+            <MobileGroup key={entry.label} group={entry} onClose={onClose} />
+          ) : (
+            <NavLink
+              key={entry.to}
+              to={entry.to}
+              end={entry.end}
+              viewTransition
+              onClick={onClose}
+              className={({ isActive }) =>
+                cx(
+                  'inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors',
+                  isActive
+                    ? 'bg-navy/8 font-medium text-navy'
+                    : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+                )
+              }
+            >
+              <entry.icon size={14} aria-hidden />
+              {entry.label}
+            </NavLink>
+          ),
+        )}
+      </div>
+
+      <div className="mt-3 border-t border-hairline pt-3">
+        {identity ? (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[0.82rem] font-medium text-navy">{identity.name}</p>
+              <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={signOut}>
+              Sign out
+            </Button>
+          </div>
+        ) : (
+          <Link
+            to="/login"
+            viewTransition
+            onClick={onClose}
+            className="inline-flex w-full items-center justify-center rounded-md bg-navy px-3 py-2 text-[0.82rem] font-medium text-parchment"
+          >
+            Sign in
+          </Link>
+        )}
+      </div>
+    </nav>
+  );
+}
+
+/** Accordion-style expandable group for mobile */
+function MobileGroup({ group, onClose }: { group: NavGroup; onClose: () => void }) {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+
+  const isAnyActive = group.items.some((item) => {
+    if (item.end) return location.pathname === item.to;
+    return location.pathname.startsWith(item.to);
+  });
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cx(
+          'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors',
+          isAnyActive
+            ? 'bg-navy/8 font-medium text-navy'
+            : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+        )}
+      >
+        <group.icon size={14} aria-hidden />
+        <span className="flex-1 text-left">{group.label}</span>
+        <ChevronDown
+          size={12}
+          aria-hidden
+          className={cx('transition-transform duration-150', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="ml-4 mt-0.5 flex flex-col gap-0.5 border-l border-hairline pl-3">
+          {group.items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              viewTransition
+              onClick={onClose}
+              className={({ isActive }) =>
+                cx(
+                  'inline-flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[0.82rem] transition-colors',
+                  isActive
+                    ? 'bg-navy/8 font-medium text-navy'
+                    : 'text-ink-muted hover:bg-parchment-deep hover:text-navy',
+                )
+              }
+            >
+              <item.icon size={14} aria-hidden />
+              {item.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ AppShell */
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { identity, signOut, status } = useSession();
   const location = useLocation();
@@ -93,7 +402,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMenuOpen(false);
   }, [location.pathname]);
 
-  const items = identity ? navForRole(identity.role, identity.factory_id) : PUBLIC_NAV;
+  const entries: NavEntry[] = identity
+    ? navForRole(identity.role, identity.factory_id)
+    : PUBLIC_NAV;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -106,6 +417,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <header className="sticky top-0 z-30 border-b border-hairline bg-parchment/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-[78rem] items-center gap-3 px-4 py-3 sm:px-6">
+          {/* Brand */}
           <Link to="/" viewTransition className="flex shrink-0 items-center gap-2">
             <BreadcrumbsMark />
             <span className="font-display text-[1.05rem] font-semibold tracking-tight text-navy">
@@ -113,20 +425,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </Link>
 
-          <nav aria-label="Main" className="ml-4 hidden flex-1 items-center gap-0.5 lg:flex">
-            <NavLinks items={items} />
-          </nav>
+          {/* Desktop navigation (grouped dropdowns) */}
+          <DesktopNav entries={entries} />
 
+          {/* Right-hand controls */}
           <div className="ml-auto flex items-center gap-2">
             <ChainStatusPill />
 
             {identity ? (
               <div className="hidden items-center gap-2 sm:flex">
-                <div className="text-right leading-tight">
-                  <p className="text-[0.78rem] font-medium text-navy">{identity.name}</p>
-                  <p className="text-[0.68rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
+                {/* User badge */}
+                <div className="hidden items-center gap-2 rounded-md border border-hairline bg-parchment-deep px-2.5 py-1.5 md:flex">
+                  <div className="h-6 w-6 shrink-0 rounded-full bg-navy flex items-center justify-center">
+                    <span className="text-[0.6rem] font-semibold text-parchment uppercase">
+                      {identity.name.charAt(0)}
+                    </span>
+                  </div>
+                  <div className="leading-tight">
+                    <p className="text-[0.78rem] font-medium text-navy">{identity.name}</p>
+                    <p className="text-[0.68rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
+                  </div>
                 </div>
-                <Button size="sm" variant="ghost" onClick={signOut} aria-label="Sign out">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={signOut}
+                  aria-label="Sign out"
+                  title="Sign out"
+                >
                   <LogOut size={14} aria-hidden />
                 </Button>
               </div>
@@ -140,6 +466,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             ) : null}
 
+            {/* Mobile hamburger */}
             <button
               type="button"
               onClick={() => setMenuOpen((open) => !open)}
@@ -153,38 +480,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {menuOpen ? (
-          <nav
-            id="mobile-nav"
-            aria-label="Main"
-            className="border-t border-hairline bg-surface px-4 py-3 lg:hidden"
-          >
-            <div className="flex flex-col gap-0.5">
-              <NavLinks items={items} onNavigate={() => setMenuOpen(false)} />
-            </div>
-            <div className="mt-3 border-t border-hairline pt-3">
-              {identity ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[0.82rem] font-medium text-navy">{identity.name}</p>
-                    <p className="text-[0.72rem] text-ink-muted">{ROLE_LABEL[identity.role]}</p>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={signOut}>
-                    Sign out
-                  </Button>
-                </div>
-              ) : (
-                <Link
-                  to="/login"
-                  viewTransition
-                  className="inline-flex w-full items-center justify-center rounded-md bg-navy px-3 py-2 text-[0.82rem] font-medium text-parchment"
-                >
-                  Sign in
-                </Link>
-              )}
-            </div>
-          </nav>
-        ) : null}
+        {/* Mobile drawer */}
+        {menuOpen && (
+          <MobileNav
+            entries={entries}
+            identity={identity}
+            signOut={signOut}
+            onClose={() => setMenuOpen(false)}
+          />
+        )}
       </header>
 
       <main id="main" className="mx-auto w-full max-w-[78rem] flex-1 px-4 py-7 sm:px-6">

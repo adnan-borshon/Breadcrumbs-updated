@@ -156,6 +156,17 @@
   }
 }
 
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* Respect the system setting rather than overriding it. */
 @media (prefers-reduced-motion: reduce) {
   *,

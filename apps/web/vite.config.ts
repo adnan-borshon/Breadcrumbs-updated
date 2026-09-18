@@ -1,9 +1,15 @@
+import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@breadcrumbs/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
+  },
   server: {
     port: 5173,
     // Keeps the browser on one origin, so no CORS in development and the API base
