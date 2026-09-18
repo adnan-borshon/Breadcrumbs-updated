@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
-import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
+import { FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { Currency, EventFamily, LedgerRecord } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, money } from '../lib/format.ts';
 import { useSession } from '../store/session.ts';
-import { EmptyState, ErrorNote, Spinner, cx } from '../components/ui/primitives.tsx';
+import { EmptyState, ErrorNote, Spinner } from '../components/ui/primitives.tsx';
 import { HashText } from '../components/ledger/Crypto.tsx';
 import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
 import { HistoryFilterToolbar, type DatePreset } from '../components/ledger/HistoryFilterToolbar.tsx';

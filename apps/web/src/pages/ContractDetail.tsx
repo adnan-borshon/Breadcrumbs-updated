@@ -5,7 +5,7 @@ import { ROLE_LABEL } from '@breadcrumbs/shared';
 import type { Contract } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
-import { dateOf, dateTimeOf, eventLabel, money } from '../lib/format.ts';
+import { dateOf, dateTimeOf, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
 import {
@@ -18,7 +18,6 @@ import {
   Stat,
   cx,
 } from '../components/ui/primitives.tsx';
-import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
 import { EntityAuditTimeline } from '../components/ledger/EntityAuditTimeline.tsx';
 import { InvoiceStatusChip } from './Invoices.tsx';
 import { ContractStatusChip } from './Dashboard.tsx';

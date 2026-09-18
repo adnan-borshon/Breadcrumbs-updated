@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, PackagePlus } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, PackagePlus, Search, SlidersHorizontal, X } from 'lucide-react';
 import type { EventType } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
@@ -22,6 +22,7 @@ import {
   cx,
 } from '../components/ui/primitives.tsx';
 import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
+import { PaginationBar } from '../components/ui/PaginationBar.tsx';
 
 const MOVEMENTS: { type: EventType; label: string; kinds: ('material' | 'chemical')[] }[] = [
   { type: 'material_receipt', label: 'Receive material', kinds: ['material'] },
@@ -45,6 +46,74 @@ export function InventoryItemPage() {
 
   const { item, ledger } = data;
   const { balance } = item;
+
+  const [directionFilter, setDirectionFilter] = useState<'all' | 'inflow' | 'outflow' | 'adjustment'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
+  const movementsWithBalance = useMemo(() => {
+    let cumulative = 0;
+    return [...ledger]
+      .sort((a, b) => a.block_index - b.block_index)
+      .map((record) => {
+        const quantity = (record.data_fields['quantity'] as number) ?? 0;
+        const isInflow =
+          record.event_type === 'material_receipt' || record.event_type === 'chemical_receipt';
+        const isStockAdj = record.event_type === 'stock_adjustment';
+
+        let delta = 0;
+        if (isInflow) {
+          delta = Math.abs(quantity);
+        } else if (isStockAdj) {
+          delta = quantity;
+        } else {
+          delta = -Math.abs(quantity);
+        }
+
+        cumulative += delta;
+        return {
+          record,
+          delta,
+          quantity,
+          balanceAfter: cumulative,
+          isInflow,
+          isStockAdj,
+        };
+      });
+  }, [ledger]);
+
+  const filteredMovements = useMemo(() => {
+    return movementsWithBalance.filter(({ record, isInflow, isStockAdj }) => {
+      if (directionFilter === 'inflow' && !isInflow) return false;
+      if (directionFilter === 'outflow' && (isInflow || isStockAdj)) return false;
+      if (directionFilter === 'adjustment' && !isStockAdj) return false;
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const match =
+          record.block_index.toString().includes(q) ||
+          record.event_id.toLowerCase().includes(q) ||
+          record.event_type.toLowerCase().includes(q) ||
+          record.submitter_name.toLowerCase().includes(q) ||
+          JSON.stringify(record.data_fields).toLowerCase().includes(q);
+        if (!match) return false;
+      }
+
+      return true;
+    });
+  }, [movementsWithBalance, directionFilter, searchTerm]);
+
+  const sortedMovements = useMemo(() => {
+    return [...filteredMovements].sort((a, b) => {
+      const diff = a.record.block_index - b.record.block_index;
+      return sortOrder === 'asc' ? diff : -diff;
+    });
+  }, [filteredMovements, sortOrder]);
+
+  const totalPages = Math.ceil(sortedMovements.length / pageSize) || 1;
+  const pagedMovements = sortedMovements.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -127,80 +196,187 @@ export function InventoryItemPage() {
       <Card>
         <CardHeader
           title="Movement ledger"
-          description="Every block that touched this SKU. This is the source the balance above is folded from."
+          description="Every block that touched this SKU. Sequential running balance calculated from the immutable chain."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search
+                  size={13}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint"
+                  aria-hidden
+                />
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Filter SKU movements…"
+                  className="h-7 w-36 pl-7 text-[0.74rem] sm:w-44"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-navy"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                className="inline-flex items-center gap-1 rounded border border-hairline bg-surface px-2 py-1 text-[0.74rem] font-medium text-navy hover:border-navy"
+                title="Toggle chronological order"
+              >
+                <SlidersHorizontal size={11} />
+                {sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}
+              </button>
+            </div>
+          }
         />
+
+        {/* Direction filter tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-hairline/60 bg-parchment/40 px-5 py-2.5">
+          <span className="text-[0.72rem] font-semibold uppercase tracking-wide text-ink-faint mr-1">
+            Movement Type:
+          </span>
+          {(
+            [
+              { id: 'all', label: `All (${movementsWithBalance.length})` },
+              { id: 'inflow', label: 'Inflows (+ Receipts)' },
+              { id: 'outflow', label: 'Outflows (− Usage)' },
+              { id: 'adjustment', label: 'Corrections (⚠ Adjustments)' },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setDirectionFilter(tab.id);
+                setPage(1);
+              }}
+              className={cx(
+                'rounded-[var(--radius-pill)] border px-2.5 py-0.5 text-[0.74rem] transition-colors',
+                directionFilter === tab.id
+                  ? 'border-navy bg-navy text-parchment font-medium'
+                  : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         {ledger.length === 0 ? (
           <div className="p-5">
             <EmptyState title="No movements yet" />
           </div>
+        ) : sortedMovements.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              title="No movements match filter"
+              description="Try broadening your search term or selecting All movements."
+            />
+          </div>
         ) : (
-          <ul className="divide-y divide-hairline/60">
-            {ledger.map((record) => {
-              const quantity = record.data_fields['quantity'];
-              const inflow =
-                record.event_type === 'material_receipt' || record.event_type === 'chemical_receipt';
-              const isStockAdj = record.event_type === 'stock_adjustment';
-
-              return (
-                <li
-                  key={record.event_id}
-                  className={cx(
-                    'px-5 py-3',
-                    isStockAdj ? 'bg-gold-soft/30' : '',
-                  )}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <Link
-                        to={`/record/${encodeURIComponent(record.event_id)}`}
-                        viewTransition
-                        className="text-[0.85rem] font-medium text-navy hover:underline"
-                      >
-                        {eventLabel(record.event_type)}
-                      </Link>
-                      <p className="text-[0.74rem] text-ink-muted">
-                        {dateTimeOf(record.timestamp)} · {record.submitter_name}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {typeof quantity === 'number' ? (
-                        <span
-                          className={cx(
-                            'tabular text-[0.85rem] font-medium',
-                            inflow ? 'text-teal' : 'text-ink',
-                          )}
-                        >
-                          {inflow ? '+' : '−'}
-                          {Math.abs(quantity).toLocaleString('en-US')} {item.unit}
-                        </span>
-                      ) : null}
-                      <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
-                    </div>
-                  </div>
-                  {isStockAdj && (
-                    <div className="mt-2 flex items-start gap-2 rounded-md border border-gold/40 bg-gold-soft px-3 py-2 text-[0.73rem]">
-                      <AlertTriangle size={13} className="mt-0.5 shrink-0 text-[#8a6d24]" aria-hidden />
-                      <div>
-                        <p className="font-semibold text-[#8a6d24]">
-                          ⚠ Manual Stock Correction
-                          {typeof quantity === 'number'
-                            ? `: ${quantity > 0 ? '+' : ''}${quantity.toLocaleString('en-US')} ${item.unit}`
-                            : ''}
-                        </p>
-                        <p className="mt-0.5 text-[#8a6d24]/80">
-                          Requires physical inventory count reconciliation. Manual overrides bypass
-                          the normal inflow/outflow chain and must be independently verified.
-                          {record.data_fields['reason']
-                            ? ` Stated reason: "${String(record.data_fields['reason'])}."`
-                            : ' No reason was provided.'}
+          <div className="space-y-1">
+            <ul className="divide-y divide-hairline/60">
+              {pagedMovements.map(({ record, delta, quantity, balanceAfter, isInflow, isStockAdj }) => {
+                return (
+                  <li
+                    key={record.event_id}
+                    className={cx(
+                      'px-5 py-3.5 transition-colors hover:bg-parchment/40',
+                      isStockAdj ? 'bg-gold-soft/25' : '',
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded bg-parchment-deep px-1.5 py-0.5 font-mono text-[0.68rem] text-ink-muted">
+                            #{record.block_index}
+                          </span>
+                          <Link
+                            to={`/record/${encodeURIComponent(record.event_id)}`}
+                            viewTransition
+                            className="text-[0.88rem] font-medium text-navy hover:underline"
+                          >
+                            {eventLabel(record.event_type)}
+                          </Link>
+                        </div>
+                        <p className="mt-0.5 text-[0.74rem] text-ink-muted">
+                          {dateTimeOf(record.timestamp)} · {record.submitter_name}
                         </p>
                       </div>
+
+                      {/* Movement quantity & Running balance indicators */}
+                      <div className="flex items-center gap-5">
+                        <div className="text-right">
+                          <p
+                            className={cx(
+                              'tabular text-[0.88rem] font-semibold',
+                              isInflow
+                                ? 'text-teal'
+                                : isStockAdj
+                                  ? delta >= 0
+                                    ? 'text-[#8a6d24]'
+                                    : 'text-clay'
+                                  : 'text-ink',
+                            )}
+                          >
+                            {delta > 0 ? '+' : ''}
+                            {delta.toLocaleString('en-US')} {item.unit}
+                          </p>
+                          <p className="text-[0.72rem] text-ink-faint">
+                            Balance after:{' '}
+                            <span className="font-medium text-navy">
+                              {balanceAfter.toLocaleString('en-US')} {item.unit}
+                            </span>
+                          </p>
+                        </div>
+
+                        <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
+                      </div>
                     </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+
+                    {isStockAdj && (
+                      <div className="mt-2.5 flex items-start gap-2 rounded-md border border-gold/40 bg-gold-soft px-3 py-2 text-[0.73rem]">
+                        <AlertTriangle size={13} className="mt-0.5 shrink-0 text-[#8a6d24]" aria-hidden />
+                        <div>
+                          <p className="font-semibold text-[#8a6d24]">
+                            ⚠ Manual Stock Adjustment
+                            {typeof quantity === 'number'
+                              ? `: ${quantity > 0 ? '+' : ''}${quantity.toLocaleString('en-US')} ${item.unit}`
+                              : ''}
+                          </p>
+                          <p className="mt-0.5 text-[#8a6d24]/90">
+                            Requires physical inventory count reconciliation. Manual overrides bypass
+                            the normal supply chain flow and must be independently audited.
+                            {record.data_fields['reason']
+                              ? ` Stated reason: "${String(record.data_fields['reason'])}."`
+                              : ' No reason was provided.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="px-5 pb-2">
+              <PaginationBar
+                page={page}
+                totalPages={totalPages}
+                totalItems={sortedMovements.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
+            </div>
+          </div>
         )}
       </Card>
     </div>

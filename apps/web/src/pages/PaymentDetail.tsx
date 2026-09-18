@@ -5,9 +5,8 @@ import { PAYMENT_METHOD_LABEL } from '@breadcrumbs/shared';
 import type { PaymentMethod } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
-import { dateTimeOf, eventLabel, money } from '../lib/format.ts';
+import { dateTimeOf, money } from '../lib/format.ts';
 import { Card, CardHeader, ErrorNote, Spinner, Stat } from '../components/ui/primitives.tsx';
-import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
 import { EntityAuditTimeline } from '../components/ledger/EntityAuditTimeline.tsx';
 import { PaymentStatusChip } from './Payments.tsx';
 

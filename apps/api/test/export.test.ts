@@ -108,4 +108,48 @@ describe('export & receipts', () => {
     expect(eventIdsA).toContain(recordA.event_id);
     expect(eventIdsA).not.toContain(recordB.event_id); // Cannot see Factory B
   });
+
+  it('supports pagination, status filtering, and sorting in /api/transactions', async () => {
+    const app = createApp();
+
+    const record1 = buildRecord(factoryUserA, 'inspection', 'FAC-A', INSPECTION);
+    await commit({
+      record: record1,
+      signature: await sign(record1, factoryUserA),
+      keyFingerprint: factoryUserA.fingerprint,
+      actor: factoryUserA.actor,
+    });
+
+    const record2 = buildRecord(factoryUserA, 'production_report', 'FAC-A', {
+      order_ref: 'PO-991',
+      units_produced: 500,
+      working_hours: 8,
+      line_count: 2,
+      defect_count: 2,
+    });
+    await commit({
+      record: record2,
+      signature: await sign(record2, factoryUserA),
+      keyFingerprint: factoryUserA.fingerprint,
+      actor: factoryUserA.actor,
+    });
+
+    // Test pagination & sorting
+    const resPaged = await app.request('/api/transactions?page=1&limit=1&sortOrder=asc');
+    expect(resPaged.status).toBe(200);
+    const paged = await resPaged.json();
+    expect(paged.transactions.length).toBe(1);
+    expect(paged.total).toBe(2);
+    expect(paged.page).toBe(1);
+    expect(paged.totalPages).toBe(2);
+    // Oldest first: record1 was committed first
+    expect(paged.transactions[0].event_id).toBe(record1.event_id);
+
+    // Test status filtering
+    const resStatus = await app.request('/api/transactions?status=pending');
+    expect(resStatus.status).toBe(200);
+    const statusData = await resStatus.json();
+    expect(statusData.transactions.length).toBe(2);
+  });
 });
+

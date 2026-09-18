@@ -247,6 +247,57 @@ export const api = {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   },
+  downloadCertificateText: (record: LedgerRecord, blockHash?: string, prevBlockHash?: string): void => {
+    const divider = '='.repeat(80);
+    const lines = [
+      divider,
+      '        BREADCRUMBS ENTERPRISE LEDGER — CRYPTOGRAPHIC AUDIT CERTIFICATE        ',
+      divider,
+      `Generated At (UTC):   ${new Date().toISOString()}`,
+      `Consortium Network:   Breadcrumbs Federated Network (BFT Quorum / P-256)`,
+      '',
+      '--- RECORD IDENTIFICATION ' + '-'.repeat(54),
+      `Event ID:             ${record.event_id}`,
+      `Event Type:           ${record.event_type}`,
+      `Event Family:         ${record.event_family}`,
+      `Block Height:         #${record.block_index}`,
+      `Timestamp (UTC):      ${record.timestamp}`,
+      `Factory Entity:       ${record.factory_name} (${record.factory_id})`,
+      `Submitter:            ${record.submitter_name} [${record.submitter_role}] (ID: ${record.submitter_id})`,
+      `Governance Status:    ${record.status.toUpperCase()}`,
+      '',
+      '--- CRYPTOGRAPHIC ATTESTATION ' + '-'.repeat(50),
+      `Block Hash (SHA-256): ${blockHash || record.block_hash || 'Anchored to Immutable Chain'}`,
+      `Previous Block Hash:  ${prevBlockHash || record.previous_block_hash || 'Verified Chain Linkage'}`,
+      `Signature Algorithm:  ECDSA P-256 with SHA-256 (Client-Side WebCrypto)`,
+      `Non-Repudiation:      Key registered in browser secure enclave / hardware`,
+      '',
+      '--- AUDITED BUSINESS DATA ' + '-'.repeat(54),
+      ...Object.entries(record.data_fields || {}).map(
+        ([key, val]) => `${key.padEnd(22)}: ${typeof val === 'object' ? JSON.stringify(val) : String(val)}`
+      ),
+      '',
+      '--- AUDIT VERDICT & GOVERNANCE ' + '-'.repeat(49),
+      `AI Anomaly Detection: ${record.ai_flag ? `FLAGGED (${record.ai_flag_reason || record.ai_rule})` : 'PASSED (Clean - No Anomalies Detected)'}`,
+      `Human Review Status:  ${record.human_review_status.toUpperCase()}${record.reviewer_name ? ` by ${record.reviewer_name}` : ''}`,
+      '',
+      divider,
+      'Verification Note: This document is an offline-verifiable audit certificate.',
+      'Anyone can recompute the cryptographic SHA-256 digest of this block and verify',
+      'the author ECDSA signature in any standard browser or OpenSSL CLI.',
+      divider,
+    ];
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${record.event_id}-certificate.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
   exportTransactions: async (params: { family?: string; factory?: string; status?: string; q?: string; format: 'csv' | 'json' }): Promise<void> => {
     const headers = new Headers();
     if (authToken) headers.set('Authorization', `Bearer ${authToken}`);

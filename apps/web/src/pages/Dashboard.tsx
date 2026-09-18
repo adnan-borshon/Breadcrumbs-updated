@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -487,15 +488,67 @@ function RecordList({
   records: LedgerRecord[];
   loading: boolean;
 }) {
+  const [filter, setFilter] = useState<'all' | 'verified' | 'flagged' | 'commercial'>('all');
+
+  const filtered = records.filter((r) => {
+    if (filter === 'verified') return r.status === 'verified';
+    if (filter === 'flagged') return r.status === 'flagged' || r.ai_flag;
+    if (filter === 'commercial') {
+      return (
+        r.event_family === 'contract' ||
+        r.event_family === 'invoice' ||
+        r.event_family === 'payment'
+      );
+    }
+    return true;
+  });
+
   return (
-    <Section title={title} description={description}>
+    <Section
+      title={title}
+      description={description}
+      action={
+        <Link
+          to="/app/transactions"
+          viewTransition
+          className="text-[0.8rem] font-medium text-navy hover:underline"
+        >
+          View all transactions →
+        </Link>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-1.5 pb-1">
+        {(
+          [
+            { id: 'all', label: `All (${records.length})` },
+            { id: 'verified', label: 'Verified' },
+            { id: 'flagged', label: 'Flagged / Review' },
+            { id: 'commercial', label: 'Commercial' },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setFilter(tab.id)}
+            className={cx(
+              'rounded-[var(--radius-pill)] border px-2.5 py-0.5 text-[0.74rem] transition-colors',
+              filter === tab.id
+                ? 'border-navy bg-navy text-parchment font-medium'
+                : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <Spinner />
-      ) : records.length === 0 ? (
-        <EmptyState title="Nothing here yet" description="Records will appear as they are committed." />
+      ) : filtered.length === 0 ? (
+        <EmptyState title="Nothing here yet" description="Records matching this filter will appear as they are committed." />
       ) : (
         <div className="grid gap-3">
-          {records.map((record) => (
+          {filtered.map((record) => (
             <div
               key={record.event_id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-hairline bg-surface px-5 py-4"

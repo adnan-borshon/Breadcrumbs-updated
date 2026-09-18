@@ -9,13 +9,11 @@ import {
   Coins,
   Download,
   ExternalLink,
-  FileCheck2,
   FileSignature,
   FileText,
   Receipt,
   Search,
   ShieldAlert,
-  ShieldCheck,
   SlidersHorizontal,
 } from 'lucide-react';
 import type { LedgerRecord } from '@breadcrumbs/shared';
@@ -131,7 +129,7 @@ export function EntityAuditTimeline({
       ) : (
         <div className="p-5">
           <ol className="relative space-y-6 before:absolute before:bottom-3 before:left-[17px] before:top-3 before:w-0.5 before:bg-hairline">
-            {sorted.map((record, index) => {
+            {sorted.map((record) => {
               const isExpanded = !!expandedEvents[record.event_id];
               const fields = record.data_fields;
 
@@ -281,10 +279,10 @@ export function EntityAuditTimeline({
 }
 
 /** Renders concise business impact summary per record */
-function renderPayloadSummary(record: LedgerRecord, entityType: string) {
+function renderPayloadSummary(record: LedgerRecord, _entityType: string) {
   const fields = record.data_fields;
 
-  if (record.event_type === 'contract_opened') {
+  if (record.event_type === 'contract_created') {
     return (
       <>
         <span>
@@ -374,7 +372,7 @@ function renderPayloadSummary(record: LedgerRecord, entityType: string) {
   }
 
   // Generic fallback
-  const firstNumeric = Object.entries(fields).find(([k, v]) => typeof v === 'number');
+  const firstNumeric = Object.entries(fields).find(([_, v]) => typeof v === 'number');
   if (firstNumeric) {
     return (
       <span>

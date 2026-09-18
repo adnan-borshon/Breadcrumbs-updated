@@ -5,7 +5,8 @@ import {
   AlertTriangle,
   Blocks,
   CheckCircle2,
-  Download,
+  FileSpreadsheet,
+  FileText,
   FlaskConical,
   Globe,
   Loader2,
@@ -15,7 +16,6 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from 'lucide-react';
-import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { BlockCheck, ChainReport, EventFamily } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
@@ -195,11 +195,19 @@ export function Explorer() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => void api.exportTransactions({ format: 'json' })}
-            title="Download full ledger blocks snapshot as JSON"
+            onClick={() => void api.exportTransactions({ format: 'csv' })}
+            title="Download human-readable ledger spreadsheet (CSV) for Excel or Google Sheets"
           >
-            <Download size={15} aria-hidden />
-            Export Ledger Snapshot
+            <FileSpreadsheet size={15} aria-hidden />
+            Export CSV (Spreadsheet)
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void api.exportTransactions({ format: 'json' })}
+            title="Download full machine-verifiable cryptographic ledger snapshot as JSON"
+          >
+            <FileText size={15} aria-hidden />
+            Export JSON
           </Button>
           <Button
             variant="primary"
@@ -681,31 +689,6 @@ function TamperControl({
   );
 }
 
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cx(
-        'rounded-[var(--radius-pill)] border px-3 py-1 text-[0.76rem] transition-colors',
-        active
-          ? 'border-navy bg-navy text-parchment'
-          : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
 
 function TabButton({
   active,

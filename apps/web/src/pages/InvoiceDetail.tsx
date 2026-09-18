@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, Wallet } from 'lucide-react';
 import type { Invoice } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
-import { dateOf, dateTimeOf, eventLabel, money } from '../lib/format.ts';
+import { dateOf, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
 import {
@@ -21,7 +21,6 @@ import {
   Textarea,
   cx,
 } from '../components/ui/primitives.tsx';
-import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
 import { EntityAuditTimeline } from '../components/ledger/EntityAuditTimeline.tsx';
 import { InvoiceStatusChip } from './Invoices.tsx';
 import { PaymentStatusChip } from './Payments.tsx';

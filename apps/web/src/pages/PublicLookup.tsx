@@ -126,6 +126,9 @@ function FactorySearch() {
 
 function FactoryTimeline({ factoryId }: { factoryId: string }) {
   const [showTechnical, setShowTechnical] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'chemical' | 'commercial' | 'audit'>('all');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'verified' | 'flagged' | 'disputed'>('all');
   const { data: report } = useChainReport();
 
   const { data, isPending, isError, error } = useQuery({
@@ -146,6 +149,49 @@ function FactoryTimeline({ factoryId }: { factoryId: string }) {
   }
 
   const { factory, trust, timeline } = data;
+
+  const filteredTimeline = timeline.filter((entry) => {
+    if (statusFilter !== 'all' && entry.status !== statusFilter) return false;
+
+    if (categoryFilter === 'chemical') {
+      const isChem =
+        entry.headline.toLowerCase().includes('chemical') ||
+        entry.headline.toLowerCase().includes('dye') ||
+        entry.headline.toLowerCase().includes('consumption') ||
+        entry.summary.toLowerCase().includes('chemical');
+      if (!isChem) return false;
+    } else if (categoryFilter === 'commercial') {
+      const isComm =
+        entry.headline.toLowerCase().includes('contract') ||
+        entry.headline.toLowerCase().includes('order') ||
+        entry.headline.toLowerCase().includes('invoice') ||
+        entry.headline.toLowerCase().includes('payment') ||
+        entry.headline.toLowerCase().includes('po') ||
+        entry.summary.toLowerCase().includes('order');
+      if (!isComm) return false;
+    } else if (categoryFilter === 'audit') {
+      const isAudit =
+        entry.headline.toLowerCase().includes('audit') ||
+        entry.headline.toLowerCase().includes('wage') ||
+        entry.headline.toLowerCase().includes('labor') ||
+        entry.headline.toLowerCase().includes('review') ||
+        entry.headline.toLowerCase().includes('dispute') ||
+        entry.headline.toLowerCase().includes('cert');
+      if (!isAudit) return false;
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const match =
+        entry.headline.toLowerCase().includes(q) ||
+        entry.summary.toLowerCase().includes(q) ||
+        entry.submitter_name.toLowerCase().includes(q) ||
+        entry.event_id.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -215,18 +261,92 @@ function FactoryTimeline({ factoryId }: { factoryId: string }) {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg text-navy">History</h2>
-        <Button size="sm" variant="ghost" onClick={() => setShowTechnical((value) => !value)}>
-          {showTechnical ? 'Hide technical details' : 'Show technical details'}
-        </Button>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-lg text-navy">Verified History</h2>
+          <Button size="sm" variant="ghost" onClick={() => setShowTechnical((value) => !value)}>
+            {showTechnical ? 'Hide technical details' : 'Show technical details'}
+          </Button>
+        </div>
+
+        {/* History category & search toolbar */}
+        <div className="space-y-2 rounded-md border border-hairline bg-surface p-3">
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
+              aria-hidden
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search history records, ZK proofs, or milestones…"
+              className="h-8 pl-8 text-[0.8rem]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[0.74rem]">
+            <span className="font-semibold text-ink-faint mr-1">Category:</span>
+            {(
+              [
+                { id: 'all', label: 'All History' },
+                { id: 'chemical', label: 'Chemical / ZDHC' },
+                { id: 'commercial', label: 'Orders & Commercial' },
+                { id: 'audit', label: 'Labor & Certifications' },
+              ] as const
+            ).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategoryFilter(cat.id)}
+                className={cx(
+                  'rounded-[var(--radius-pill)] border px-2.5 py-0.5 transition-colors',
+                  categoryFilter === cat.id
+                    ? 'border-navy bg-navy text-parchment font-medium'
+                    : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
+                )}
+              >
+                {cat.label}
+              </button>
+            ))}
+
+            <span className="font-semibold text-ink-faint ml-2 mr-1">Status:</span>
+            {(
+              [
+                { id: 'all', label: 'All' },
+                { id: 'verified', label: 'Verified' },
+                { id: 'flagged', label: 'Flagged' },
+              ] as const
+            ).map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => setStatusFilter(st.id)}
+                className={cx(
+                  'rounded-[var(--radius-pill)] border px-2.5 py-0.5 transition-colors',
+                  statusFilter === st.id
+                    ? 'border-teal bg-teal text-parchment font-medium'
+                    : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
+                )}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {timeline.length === 0 ? (
         <EmptyState title="No public records yet" />
+      ) : filteredTimeline.length === 0 ? (
+        <EmptyState
+          title="No history matches filter"
+          description="Try selecting All History or clearing the search."
+        />
       ) : (
         <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:w-px before:bg-hairline">
-          {timeline.map((entry) => (
+          {filteredTimeline.map((entry) => (
+
             <li key={entry.event_id} className="relative pl-7">
               <span
                 aria-hidden

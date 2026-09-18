@@ -9,6 +9,7 @@ import {
   Download,
   ExternalLink,
   FileCheck2,
+  FileText,
   Fingerprint,
   Loader2,
   ShieldAlert,
@@ -110,6 +111,15 @@ export function RecordDetail() {
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status={record.status} />
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void api.downloadCertificateText(record, record.block_hash, record.previous_block_hash)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+              title="Download human-readable formatted audit certificate (.txt) for printing or offline inspection"
+            >
+              <FileText size={13} aria-hidden />
+              Download Certificate (.txt)
+            </button>
             <button
               type="button"
               onClick={() => void api.downloadReceipt(record.event_id)}

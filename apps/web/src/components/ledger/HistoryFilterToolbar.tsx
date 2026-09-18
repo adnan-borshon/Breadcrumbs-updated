@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Calendar, Check, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { EVENT_FAMILIES, FAMILY_LABEL, type EventFamily } from '@breadcrumbs/shared';
 import { cx, Input } from '../ui/primitives.tsx';
