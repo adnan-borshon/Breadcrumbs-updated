@@ -12,8 +12,16 @@
 
 import type { EventFamily, EventType, SubmitterRole } from './roles.ts';
 
-/** What the client signs. Nothing here is ever set by the server. */
+export const DEFAULT_CHAIN_ID = 'breadcrumbs-garments-v1';
+
+/** What the client signs. Anchored to the chain to prevent replay and reordering attacks. */
 export interface SignedRecord {
+  /** Target consortium chain/network identifier (cross-chain replay protection) */
+  chain_id?: string;
+  /** Cryptographic anchor linking the transaction to the current head block */
+  previous_block_hash?: string;
+  /** Submitter sequential transaction nonce for replay and ordering protection */
+  nonce?: number;
   event_id: string;
   factory_id: string;
   event_type: EventType;
@@ -152,3 +160,52 @@ export interface ChainReport {
 }
 
 export const GENESIS_PREV_HASH = '0'.repeat(64);
+
+/**
+ * Public blockchain notarization checkpoint (e.g. Polygon Amoy / Ethereum Sepolia).
+ * Defeats the "single centralized database" attack by anchoring state roots to a public L1/L2.
+ */
+export interface ChainCheckpoint {
+  checkpoint_id: string;
+  block_height: number;
+  block_hash: string;
+  merkle_root: string;
+  notarized_at: string;
+  network: string;
+  tx_hash: string;
+  explorer_url: string;
+  status: 'confirmed' | 'pending';
+}
+
+/** Telemetry from federated consortium nodes. */
+export interface ConsortiumPeer {
+  id: string;
+  label: string;
+  org: string;
+  city: string;
+  role: 'Validator' | 'Observer';
+  height: number;
+  status: 'active' | 'syncing' | 'standby';
+  latency_ms: number;
+  last_block_hash: string;
+}
+
+export interface NetworkTelemetry {
+  local_node: {
+    id: string;
+    role: string;
+    height: number;
+    head_hash: string;
+    chain_id: string;
+  };
+  consensus: {
+    protocol: string;
+    validators_online: number;
+    total_validators: number;
+    epoch: number;
+    finalized_height: number;
+  };
+  peers: ConsortiumPeer[];
+  latest_checkpoint: ChainCheckpoint | null;
+}
+

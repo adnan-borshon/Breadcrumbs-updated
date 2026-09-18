@@ -1,17 +1,10 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-  AlertTriangle,
-  ArrowRight,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Factory as FactoryIcon,
   MapPin,
   QrCode,
   Search,
-  ShieldAlert,
   ShieldCheck,
   Users,
 } from 'lucide-react';

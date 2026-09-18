@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, PenLine, Receipt, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, PenLine, Receipt, ShieldCheck } from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import { ROLE_LABEL } from '@breadcrumbs/shared';
 import type { Contract } from '@breadcrumbs/shared';
 
@@ -38,14 +39,7 @@ export function ContractDetail() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <Link
-        to="/app/contracts"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Contracts
-      </Link>
+      <BackLink defaultTo="/app/contracts" defaultLabel="Contracts" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">

@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import { PAYMENT_METHOD_LABEL } from '@breadcrumbs/shared';
 import type { PaymentMethod } from '@breadcrumbs/shared';
 
@@ -25,14 +26,7 @@ export function PaymentDetail() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <Link
-        to="/app/payments"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Payments
-      </Link>
+      <BackLink defaultTo="/app/payments" defaultLabel="Payments" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>

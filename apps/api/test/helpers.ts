@@ -1,7 +1,9 @@
 import {
   canonicalJson,
+  DEFAULT_CHAIN_ID,
   exportPublicJwk,
   generateKeyPair,
+  GENESIS_PREV_HASH,
   publicKeyFingerprint,
   signRecord,
 } from '@breadcrumbs/shared';
@@ -83,6 +85,7 @@ export function buildRecord(
   overrides: Partial<SignedRecord> = {},
 ): SignedRecord {
   return {
+    chain_id: DEFAULT_CHAIN_ID,
     event_id: `EVT-${crypto.randomUUID().slice(0, 8)}`,
     factory_id: factoryId,
     event_type: eventType,

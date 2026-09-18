@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -38,6 +38,7 @@ export function EntityAuditTimeline({
   description = 'Chronological blocks written to the ledger, each individually signed and verified.',
   className,
 }: EntityAuditTimelineProps) {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('asc');
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
@@ -169,6 +170,7 @@ export function EntityAuditTimeline({
                           </span>
                           <Link
                             to={`/record/${encodeURIComponent(record.event_id)}`}
+                            state={{ from: `${location.pathname}${location.search}`, label: title }}
                             viewTransition
                             className="text-[0.92rem] font-semibold text-navy hover:underline"
                           >

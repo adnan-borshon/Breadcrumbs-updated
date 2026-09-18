@@ -8,6 +8,7 @@
 
 import type {
   Block,
+  ChainCheckpoint,
   ChainReport,
   Contract,
   Factory,
@@ -15,6 +16,7 @@ import type {
   InventoryItemView,
   Invoice,
   LedgerRecord,
+  NetworkTelemetry,
   Payment,
   Role,
 } from '@breadcrumbs/shared';
@@ -141,10 +143,11 @@ export const api = {
   identities: () => get<{ identities: Identity[] }>('/auth/identities'),
   login: (identityId: string) =>
     post<{ token: string; identity: Identity }>('/auth/login', { identity_id: identityId }),
-  registerKey: (publicKeyJwk: JsonWebKey, label: string) =>
+  registerKey: (publicKeyJwk: JsonWebKey, label: string, popSignature?: string) =>
     post<{ fingerprint: string; label: string; reused: boolean }>('/auth/register-key', {
       public_key_jwk: publicKeyJwk,
       label,
+      pop_signature: popSignature,
     }),
   me: () =>
     get<{ identity: Identity; keys: { fingerprint: string; label: string; created_at: string }[] }>(
@@ -152,6 +155,11 @@ export const api = {
     ),
 
   head: () => get<{ head: Block | null; height: number }>('/chain/head'),
+  nonce: (submitterId: string) =>
+    get<{ submitter_id: string; next_nonce: number }>(`/chain/nonce/${encodeURIComponent(submitterId)}`),
+  peers: () => get<NetworkTelemetry>('/chain/peers'),
+  checkpoints: () => get<{ checkpoints: ChainCheckpoint[] }>('/chain/checkpoints'),
+  notarize: () => post<{ checkpoint: ChainCheckpoint; notarized: boolean }>('/chain/notarize'),
   blocks: (params: { family?: string; factory?: string } = {}) =>
     get<{ blocks: BlockSummary[] }>(`/chain/blocks${query(params)}`),
   rawBlocks: () => get<{ blocks: Block[] }>('/chain/raw-blocks'),

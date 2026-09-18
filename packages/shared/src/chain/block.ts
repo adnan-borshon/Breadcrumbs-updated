@@ -8,7 +8,7 @@
 
 import { canonicalJson } from './canonical.ts';
 import { sha256Hex, signPayload } from './crypto.ts';
-import { GENESIS_PREV_HASH } from '../types/ledger.ts';
+import { DEFAULT_CHAIN_ID, GENESIS_PREV_HASH } from '../types/ledger.ts';
 import type { Block, BlockHashInput, SignedRecord } from '../types/ledger.ts';
 
 /**
@@ -82,6 +82,9 @@ export async function buildBlock(input: BuildBlockInput): Promise<Block> {
  */
 export async function buildGenesisBlock(timestamp: string): Promise<Block> {
   const record: SignedRecord = {
+    chain_id: DEFAULT_CHAIN_ID,
+    previous_block_hash: GENESIS_PREV_HASH,
+    nonce: 0,
     event_id: 'genesis',
     factory_id: 'system',
     event_type: 'genesis',
@@ -91,7 +94,7 @@ export async function buildGenesisBlock(timestamp: string): Promise<Block> {
     submitter_role: 'system',
     data_fields: {
       note: 'Genesis block — start of the Breadcrumbs permissioned ledger.',
-      chain: 'breadcrumbs-garments-v1',
+      chain: DEFAULT_CHAIN_ID,
     },
     ref_id: null,
   };

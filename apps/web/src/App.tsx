@@ -55,8 +55,14 @@ export function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/explorer" element={<Explorer />} />
         <Route path="/record/:eventId" element={<RecordDetail />} />
+        <Route path="/records/:eventId" element={<RecordDetail />} />
+        <Route path="/app/record/:eventId" element={<RecordDetail />} />
+        <Route path="/app/records/:eventId" element={<RecordDetail />} />
+        <Route path="/app/explorer" element={<Navigate to="/explorer" replace />} />
         <Route path="/lookup" element={<PublicLookup />} />
         <Route path="/lookup/:factoryId" element={<PublicLookup />} />
+        <Route path="/app/lookup" element={<Navigate to="/lookup" replace />} />
+        <Route path="/app/lookup/:factoryId" element={<PublicLookup />} />
 
         {/* Signed in */}
         <Route
@@ -78,7 +84,7 @@ export function App() {
         <Route
           path="/app/submit"
           element={
-            <Protected roles={['factory']}>
+            <Protected roles={['factory', 'auditor']}>
               <SubmitRecord />
             </Protected>
           }
@@ -92,6 +98,10 @@ export function App() {
           }
         />
 
+        <Route
+          path="/app/inventory"
+          element={<Navigate to="/app/inventory/materials" replace />}
+        />
         <Route
           path="/app/inventory/:kind"
           element={

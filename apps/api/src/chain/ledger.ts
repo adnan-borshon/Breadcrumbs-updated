@@ -26,6 +26,7 @@ import {
   canJsonEqual,
   canonicalJson,
   canSubmit,
+  DEFAULT_CHAIN_ID,
   EVENT_FAMILY,
   GENESIS_PREV_HASH,
   recordPayload,
@@ -44,7 +45,7 @@ import type {
 } from '@breadcrumbs/shared';
 
 import { getDb } from '../db/client.ts';
-import { blocks, deviceKeys, identities, pContracts, pInvoices, pRecords } from '../db/schema.ts';
+import { blocks, deviceKeys, identities, pContracts, pInvoices, pPayments, pRecords } from '../db/schema.ts';
 import { applyBlock, snapshotLookups } from './projections.ts';
 import { blockToRow, rowToBlock, str } from './rows.ts';
 
@@ -115,6 +116,18 @@ export async function getHeight(): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Sequential nonce tracking per submitter identity for replay and reorder protection.
+ */
+export async function getNextNonce(submitterId: string): Promise<number> {
+  const db = getDb();
+  const rows = await db
+    .select({ i: blocks.blockIndex })
+    .from(blocks)
+    .where(eq(blocks.submitterId, submitterId));
+  return rows.length;
+}
+
 export async function getAllBlocks(): Promise<Block[]> {
   const db = getDb();
   const rows = await db.select().from(blocks).orderBy(asc(blocks.blockIndex));
@@ -164,6 +177,16 @@ async function assertPreconditions(record: SignedRecord, actor: ActorContext): P
       const id = str(fields, 'contract_id');
       const [contract] = await db.select().from(pContracts).where(eq(pContracts.contractId, id));
       if (!contract) throw new LedgerError(422, 'unknown_contract', `No contract ${id}.`);
+      if (contract.status === 'closed') {
+        throw new LedgerError(422, 'contract_closed', `Contract ${id} is already closed.`);
+      }
+      if (actor.role !== 'brand' || contract.brandId !== actor.id) {
+        throw new LedgerError(
+          403,
+          'not_contract_owner',
+          `Only the purchasing brand (${contract.brandId}) can amend or close contract ${id}.`,
+        );
+      }
       return;
     }
 
@@ -197,15 +220,47 @@ async function assertPreconditions(record: SignedRecord, actor: ActorContext): P
       const id = str(fields, 'invoice_id');
       const [invoice] = await db.select().from(pInvoices).where(eq(pInvoices.invoiceId, id));
       if (!invoice) throw new LedgerError(422, 'unknown_invoice', `No invoice ${id}.`);
+      if (actor.role !== 'brand' || invoice.brandId !== actor.id) {
+        throw new LedgerError(
+          403,
+          'not_invoice_buyer',
+          `Only the purchasing brand (${invoice.brandId}) can approve, dispute, or settle invoice ${id}.`,
+        );
+      }
       return;
     }
 
-    case 'payment_initiated':
-    case 'payment_settled':
-    case 'payment_failed': {
+    case 'payment_initiated': {
       const id = str(fields, 'invoice_id');
       const [invoice] = await db.select().from(pInvoices).where(eq(pInvoices.invoiceId, id));
       if (!invoice) throw new LedgerError(422, 'unknown_invoice', `No invoice ${id}.`);
+      if (actor.role !== 'brand' || invoice.brandId !== actor.id) {
+        throw new LedgerError(
+          403,
+          'not_invoice_buyer',
+          `Only the purchasing brand (${invoice.brandId}) can initiate payments for invoice ${id}.`,
+        );
+      }
+      return;
+    }
+
+    case 'payment_settled':
+    case 'payment_failed': {
+      const invoiceId = str(fields, 'invoice_id');
+      const paymentId = str(fields, 'payment_id');
+      const [invoice] = await db.select().from(pInvoices).where(eq(pInvoices.invoiceId, invoiceId));
+      if (!invoice) throw new LedgerError(422, 'unknown_invoice', `No invoice ${invoiceId}.`);
+      if (actor.role !== 'brand' || invoice.brandId !== actor.id) {
+        throw new LedgerError(
+          403,
+          'not_invoice_buyer',
+          `Only the purchasing brand (${invoice.brandId}) can settle or mark failed payments for invoice ${invoiceId}.`,
+        );
+      }
+      const [payment] = await db.select().from(pPayments).where(eq(pPayments.paymentId, paymentId));
+      if (!payment) {
+        throw new LedgerError(422, 'unknown_payment', `No payment ${paymentId} found to update.`);
+      }
       return;
     }
 
@@ -351,6 +406,34 @@ export async function commit(input: CommitInput): Promise<CommitResult> {
   const [duplicate] = await db.select().from(blocks).where(eq(blocks.eventId, record.event_id));
   if (duplicate) {
     throw new LedgerError(409, 'duplicate_event', `Event ${record.event_id} is already on the chain.`);
+  }
+
+  /* 7b — cryptographic replay and ordering protection */
+  if (record.chain_id && record.chain_id !== DEFAULT_CHAIN_ID) {
+    throw new LedgerError(
+      400,
+      'wrong_chain_id',
+      `Transaction targeted chain ${record.chain_id}, expected ${DEFAULT_CHAIN_ID}.`,
+    );
+  }
+
+  const expectedNonce = await getNextNonce(record.submitter_id);
+  if (typeof record.nonce === 'number' && record.nonce !== expectedNonce) {
+    throw new LedgerError(
+      400,
+      'invalid_nonce',
+      `Invalid transaction nonce: expected ${expectedNonce}, received ${record.nonce}.`,
+    );
+  }
+
+  const currentHead = await getHead();
+  const expectedPrevHash = currentHead ? currentHead.block_hash : GENESIS_PREV_HASH;
+  if (record.previous_block_hash && record.previous_block_hash !== expectedPrevHash) {
+    throw new LedgerError(
+      409,
+      'stale_block_anchor',
+      `Transaction is anchored to stale block hash ${record.previous_block_hash.slice(0, 10)}... Current head is ${expectedPrevHash.slice(0, 10)}...`,
+    );
   }
 
   /* 8 — domain rules for this event family. */

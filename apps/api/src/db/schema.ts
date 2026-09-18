@@ -111,6 +111,26 @@ export const inventoryItems = sqliteTable(
   (table) => [index('inventory_items_factory_idx').on(table.factoryId)],
 );
 
+/** Public blockchain notarization checkpoints anchoring the private hash chain to L1/L2. */
+export const chainCheckpoints = sqliteTable(
+  'chain_checkpoints',
+  {
+    checkpointId: text('checkpoint_id').primaryKey(),
+    blockHeight: integer('block_height').notNull(),
+    blockHash: text('block_hash').notNull(),
+    merkleRoot: text('merkle_root').notNull(),
+    notarizedAt: text('notarized_at').notNull(),
+    network: text('network').notNull(),
+    txHash: text('tx_hash').notNull(),
+    explorerUrl: text('explorer_url').notNull(),
+    status: text('status').notNull().default('confirmed'),
+  },
+  (table) => [
+    uniqueIndex('checkpoints_height_idx').on(table.blockHeight),
+    uniqueIndex('checkpoints_tx_idx').on(table.txHash),
+  ],
+);
+
 /* ------------------------------------------------------------ projections */
 
 export const pRecords = sqliteTable(
@@ -388,6 +408,19 @@ export const DDL: string[] = [
      last_movement_at TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS p_inv_balances_factory_idx ON p_inventory_balances (factory_id)`,
+  `CREATE TABLE IF NOT EXISTS chain_checkpoints (
+     checkpoint_id TEXT PRIMARY KEY,
+     block_height INTEGER NOT NULL,
+     block_hash TEXT NOT NULL,
+     merkle_root TEXT NOT NULL,
+     notarized_at TEXT NOT NULL,
+     network TEXT NOT NULL,
+     tx_hash TEXT NOT NULL,
+     explorer_url TEXT NOT NULL,
+     status TEXT NOT NULL DEFAULT 'confirmed'
+   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_height_idx ON chain_checkpoints (block_height)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_tx_idx ON chain_checkpoints (tx_hash)`,
 ];
 
 /** Projection tables, in the order `rebuildProjections()` clears them. */
@@ -405,6 +438,7 @@ export const PROJECTION_TABLES = [
  */
 export const ALL_TABLES = [
   ...PROJECTION_TABLES,
+  'chain_checkpoints',
   'blocks',
   'device_keys',
   'identities',

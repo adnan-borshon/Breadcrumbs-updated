@@ -34,6 +34,7 @@ import {
   Spinner,
   cx,
 } from '../components/ui/primitives.tsx';
+import { BackLink } from '../components/ui/BackLink.tsx';
 
 /* ---------------------------------------------------------------- types */
 
@@ -125,6 +126,8 @@ export function Security() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
+      <BackLink defaultTo="/app" defaultLabel="Dashboard" />
+
       <header>
         <h1 className="text-[1.6rem] text-navy">Security & Key Management</h1>
         <p className="mt-1.5 max-w-2xl text-[0.88rem] leading-relaxed text-ink-muted">

@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 
 import { api } from '../lib/api.ts';
 import { commitEvent } from '../lib/signer.ts';
@@ -94,14 +95,7 @@ export function NewContract() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
-      <Link
-        to="/app/contracts"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Contracts
-      </Link>
+      <BackLink defaultTo="/app/contracts" defaultLabel="Contracts" />
 
       <header>
         <h1 className="text-[1.6rem] text-navy">New contract</h1>
@@ -213,12 +207,21 @@ export function NewContract() {
             </Field>
           </div>
 
-          <div className="space-y-3 border-t border-hairline px-5 py-4">
-            {create.error ? <ErrorNote message={(create.error as Error).message} /> : null}
-            <Button type="submit" variant="primary" loading={create.isPending}>
-              <FileText size={15} aria-hidden />
-              Open and sign
+          <div className="flex items-center justify-between border-t border-hairline px-5 py-4">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate('/app/contracts')}
+            >
+              Cancel
             </Button>
+            <div className="flex items-center gap-3">
+              {create.error ? <ErrorNote message={(create.error as Error).message} /> : null}
+              <Button type="submit" variant="primary" loading={create.isPending}>
+                <FileText size={15} aria-hidden />
+                Open and sign
+              </Button>
+            </div>
           </div>
         </Card>
       </form>

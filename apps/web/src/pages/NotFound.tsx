@@ -1,8 +1,11 @@
 import { Link } from 'react-router';
 
 import { LinkButton } from '../components/ui/primitives.tsx';
+import { useSession } from '../store/session.ts';
 
 export function NotFound() {
+  const { identity } = useSession();
+
   return (
     <div className="mx-auto max-w-lg py-16 text-center">
       <p className="font-display text-5xl text-hairline-strong">404</p>
@@ -12,10 +15,23 @@ export function NotFound() {
         lists every block on the ledger.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
-        <LinkButton to="/" variant="primary">
-          Back to the start
-        </LinkButton>
-        <LinkButton to="/explorer">Browse the chain</LinkButton>
+        {identity ? (
+          <>
+            <LinkButton to="/app" variant="primary">
+              Return to Dashboard
+            </LinkButton>
+            <LinkButton to="/app/transactions">
+              View Transactions
+            </LinkButton>
+          </>
+        ) : (
+          <>
+            <LinkButton to="/" variant="primary">
+              Back to the start
+            </LinkButton>
+            <LinkButton to="/explorer">Browse the chain</LinkButton>
+          </>
+        )}
       </div>
       <p className="mt-6 text-[0.8rem] text-ink-muted">
         Looking up a factory?{' '}

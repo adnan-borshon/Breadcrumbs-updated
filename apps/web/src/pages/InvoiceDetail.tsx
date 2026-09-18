@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Wallet } from 'lucide-react';
+import { AlertTriangle, Wallet } from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import type { Invoice } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
@@ -40,14 +41,7 @@ export function InvoiceDetail() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <Link
-        to="/app/invoices"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Invoices
-      </Link>
+      <BackLink defaultTo="/app/invoices" defaultLabel="Invoices" />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>

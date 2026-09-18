@@ -23,6 +23,7 @@ import {
   cx,
 } from '../components/ui/primitives.tsx';
 import { StatusBadge } from '../components/ledger/StatusBadge.tsx';
+import { BackLink } from '../components/ui/BackLink.tsx';
 
 /* Simulated quorum auditor roster — same three parties as RecordDetail */
 const QUORUM_ROSTER = [
@@ -41,6 +42,7 @@ export function ReviewQueue() {
 
   return (
     <div className="space-y-5">
+      <BackLink defaultTo="/app" defaultLabel="Dashboard" />
       <header>
         <h1 className="text-[1.6rem] text-navy">Review queue</h1>
         <p className="mt-1.5 max-w-2xl text-[0.88rem] leading-relaxed text-ink-muted">

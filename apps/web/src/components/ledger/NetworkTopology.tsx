@@ -1,68 +1,37 @@
 /**
- * NetworkTopology — Federated consortium node map.
+ * NetworkTopology — Live Federated Consortium & Public Blockchain Notarization.
  *
- * Interactive SVG visualizer showing the three-party consortium nodes,
- * their roles, sync heights, and animated gossip-propagation lines.
- *
- * Communicates clearly to reviewers: this frontend is designed to govern
- * an enterprise multi-party network, not just a single Node.js process.
+ * Visualizes the multi-party consortium nodes, live synchronization telemetry,
+ * and decentralized public blockchain notarization checkpoints (Polygon Amoy / L1).
  */
 
-import { useEffect, useState, memo } from 'react';
-import { cx } from '../ui/primitives.tsx';
+import { useEffect, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  ExternalLink,
+  Anchor,
+  Loader2,
+} from 'lucide-react';
+import type { ConsortiumPeer } from '@breadcrumbs/shared';
 
-interface ConsortiumNode {
-  id: string;
-  label: string;
-  org: string;
-  city: string;
-  role: 'Validator' | 'Observer';
-  height: number;
-  status: 'active' | 'syncing' | 'standby';
-  x: number; // 0–100 SVG coordinate
+import { api } from '../../lib/api.ts';
+import { Button, cx } from '../ui/primitives.tsx';
+
+interface VisualNode extends ConsortiumPeer {
+  x: number;
   y: number;
 }
 
-const NODES: ConsortiumNode[] = [
-  {
-    id: 'brand',
-    label: 'Brand Consortium Node',
-    org: 'Brand Consortium Frankfurt GmbH',
-    city: 'Frankfurt, DE',
-    role: 'Validator',
-    height: 165,
-    status: 'active',
-    x: 50,
-    y: 15,
-  },
-  {
-    id: 'factory',
-    label: 'Factory Association Node',
-    org: 'BGMEA Factory Network',
-    city: 'Dhaka, BD',
-    role: 'Validator',
-    height: 165,
-    status: 'active',
-    x: 15,
-    y: 78,
-  },
-  {
-    id: 'compliance',
-    label: 'Independent Compliance Node',
-    org: 'UNECE Trade Facilitation',
-    city: 'Geneva, CH',
-    role: 'Observer',
-    height: 165,
-    status: 'active',
-    x: 85,
-    y: 78,
-  },
-];
+const DEFAULT_COORDS: Record<string, { x: number; y: number }> = {
+  'brand-frankfurt': { x: 50, y: 18 },
+  'factory-dhaka': { x: 18, y: 76 },
+  'compliance-geneva': { x: 82, y: 76 },
+};
 
 const EDGES = [
-  { from: 'brand', to: 'factory' },
-  { from: 'brand', to: 'compliance' },
-  { from: 'factory', to: 'compliance' },
+  { from: 'brand-frankfurt', to: 'factory-dhaka' },
+  { from: 'brand-frankfurt', to: 'compliance-geneva' },
+  { from: 'factory-dhaka', to: 'compliance-geneva' },
 ];
 
 const STATUS_COLOR: Record<string, string> = {
@@ -76,23 +45,50 @@ const ROLE_FILL: Record<string, string> = {
   Observer: '#2A9D7A',
 };
 
-/* -------------------------------------------------------------- animation */
-
-/** One gossip "pulse" travelling along an edge. */
 interface Pulse {
   id: number;
   edgeFrom: string;
   edgeTo: string;
-  t: number; // 0→1
+  t: number;
 }
 
 let pulseCounter = 0;
 
 export function NetworkTopology() {
+  const queryClient = useQueryClient();
   const [pulses, setPulses] = useState<Pulse[]>([]);
-  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const [activeNodeId, setActiveNodeId] = useState<string | null>('brand-frankfurt');
 
-  // Animate gossip pulses
+  const telemetryQuery = useQuery({
+    queryKey: ['chain', 'peers'],
+    queryFn: api.peers,
+    refetchInterval: 5000,
+  });
+
+  const checkpointsQuery = useQuery({
+    queryKey: ['chain', 'checkpoints'],
+    queryFn: api.checkpoints,
+    refetchInterval: 10000,
+  });
+
+  const notarizeMutation = useMutation({
+    mutationFn: api.notarize,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chain', 'checkpoints'] });
+      queryClient.invalidateQueries({ queryKey: ['chain', 'peers'] });
+    },
+  });
+
+  const telemetry = telemetryQuery.data;
+  const rawPeers = telemetry?.peers ?? [];
+
+  const nodes: VisualNode[] = rawPeers.map((p) => ({
+    ...p,
+    x: DEFAULT_COORDS[p.id]?.x ?? 50,
+    y: DEFAULT_COORDS[p.id]?.y ?? 50,
+  }));
+
+  // Animate gossip pulses along consortium mesh
   useEffect(() => {
     let raf: number;
     let last = performance.now();
@@ -103,19 +99,20 @@ export function NetworkTopology() {
 
       setPulses((prev) => {
         const updated = prev
-          .map((p) => ({ ...p, t: p.t + dt * 0.4 }))
+          .map((p) => ({ ...p, t: p.t + dt * 0.45 }))
           .filter((p) => p.t < 1);
 
-        // Randomly spawn new pulses
-        if (Math.random() < 0.015 && updated.length < 6) {
+        if (Math.random() < 0.02 && updated.length < 5) {
           const edge = EDGES[Math.floor(Math.random() * EDGES.length)];
           const reversed = Math.random() < 0.5;
-          updated.push({
-            id: pulseCounter++,
-            edgeFrom: reversed ? edge!.to : edge!.from,
-            edgeTo: reversed ? edge!.from : edge!.to,
-            t: 0,
-          });
+          if (edge) {
+            updated.push({
+              id: pulseCounter++,
+              edgeFrom: reversed ? edge.to : edge.from,
+              edgeTo: reversed ? edge.from : edge.to,
+              t: 0,
+            });
+          }
         }
 
         return updated;
@@ -129,20 +126,37 @@ export function NetworkTopology() {
   }, []);
 
   const getNodePos = (id: string) => {
-    const n = NODES.find((n) => n.id === id)!;
-    return { x: n.x, y: n.y };
+    const n = nodes.find((node) => node.id === id);
+    return n ? { x: n.x, y: n.y } : { x: 50, y: 50 };
   };
 
-  const selectedNode = activeNode ? NODES.find((n) => n.id === activeNode) : null;
+  const selectedNode = nodes.find((n) => n.id === activeNodeId) ?? nodes[0] ?? null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
+      {/* Top Banner: Real Consensus & Public Anchor status */}
+      <ConsensusHealthBar
+        telemetry={telemetry}
+        onNotarize={() => notarizeMutation.mutate()}
+        isNotarizing={notarizeMutation.isPending}
+      />
+
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* SVG node map */}
+        {/* SVG Mesh Visualizer */}
         <div className="lg:col-span-2">
-          <div className="rounded-[var(--radius-card)] border border-hairline bg-[#070f1e] p-4">
-            <svg viewBox="0 0 100 100" className="w-full" style={{ height: '280px' }}>
-              {/* Edge lines */}
+          <div className="rounded-[var(--radius-card)] border border-hairline bg-[#070f1e] p-4 relative overflow-hidden">
+            <div className="absolute top-3 left-4 flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-teal" />
+              </span>
+              <span className="text-[0.68rem] font-mono uppercase tracking-wider text-[#8fabc7]">
+                Live Consortium Telemetry ({nodes.length} Nodes Synchronized)
+              </span>
+            </div>
+
+            <svg viewBox="0 0 100 100" className="w-full" style={{ height: '290px' }}>
+              {/* Edges */}
               {EDGES.map((edge) => {
                 const from = getNodePos(edge.from);
                 const to = getNodePos(edge.to);
@@ -154,12 +168,13 @@ export function NetworkTopology() {
                     x2={to.x}
                     y2={to.y}
                     stroke="#1e3a5f"
-                    strokeWidth="0.5"
+                    strokeWidth="0.6"
+                    strokeDasharray="1.5,1"
                   />
                 );
               })}
 
-              {/* Gossip pulses */}
+              {/* Pulses */}
               {pulses.map((pulse) => {
                 const from = getNodePos(pulse.edgeFrom);
                 const to = getNodePos(pulse.edgeTo);
@@ -170,32 +185,33 @@ export function NetworkTopology() {
                     key={pulse.id}
                     cx={cx}
                     cy={cy}
-                    r="0.8"
+                    r="1"
                     fill="#C9A24B"
-                    opacity={1 - pulse.t * 0.3}
+                    opacity={1 - pulse.t * 0.25}
                   />
                 );
               })}
 
               {/* Nodes */}
-              {NODES.map((node) => (
+              {nodes.map((node) => (
                 <g
                   key={node.id}
                   transform={`translate(${node.x},${node.y})`}
-                  className="cursor-pointer"
-                  onClick={() => setActiveNode(activeNode === node.id ? null : node.id)}
+                  className="cursor-pointer transition-transform duration-200"
+                  onClick={() => setActiveNodeId(node.id)}
                 >
-                  {/* Status ring */}
                   <circle
-                    r="7"
+                    r="8"
                     fill="none"
-                    stroke={STATUS_COLOR[node.status]}
+                    stroke={STATUS_COLOR[node.status] ?? '#2A9D7A'}
                     strokeWidth="0.6"
-                    opacity="0.6"
+                    opacity={activeNodeId === node.id ? 1 : 0.4}
                   />
-                  {/* Node body */}
-                  <circle r="5.5" fill={ROLE_FILL[node.role]} opacity={activeNode === node.id ? 1 : 0.85} />
-                  {/* Role initial */}
+                  <circle
+                    r="6"
+                    fill={ROLE_FILL[node.role] ?? '#0F2540'}
+                    opacity={activeNodeId === node.id ? 1 : 0.85}
+                  />
                   <text
                     textAnchor="middle"
                     dominantBaseline="central"
@@ -205,69 +221,132 @@ export function NetworkTopology() {
                   >
                     {node.role[0]}
                   </text>
-                  {/* City label */}
-                  <text
-                    y="11"
-                    textAnchor="middle"
-                    fontSize="3"
-                    fill="#8fabc7"
-                  >
+                  <text y="12" textAnchor="middle" fontSize="3" fill="#cbd5e1" fontWeight="500">
                     {node.city.split(',')[0]}
                   </text>
-                  {/* Height badge */}
-                  <text
-                    y="15.5"
-                    textAnchor="middle"
-                    fontSize="2.5"
-                    fill="#2A9D7A"
-                  >
-                    #{node.height}
+                  <text y="16.5" textAnchor="middle" fontSize="2.6" fill="#2A9D7A" fontFamily="monospace">
+                    #{node.height} ({node.latency_ms}ms)
                   </text>
                 </g>
               ))}
             </svg>
 
             {/* Legend */}
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-4 text-[0.67rem] text-[#8fabc7]">
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-5 text-[0.68rem] text-[#8fabc7]">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#0F2540]" />
+                <span className="inline-block h-2 w-2 rounded-full bg-[#0F2540] border border-white/20" />
                 Validator Node
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#2A9D7A]" />
+                <span className="inline-block h-2 w-2 rounded-full bg-[#2A9D7A]" />
                 Observer Node
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-1 w-4 rounded bg-[#C9A24B]" />
-                Gossip sync pulse
+                <span className="inline-block h-1.5 w-4 rounded bg-[#C9A24B]" />
+                Gossip Sync Pulse
               </span>
             </div>
           </div>
         </div>
 
-        {/* Node detail panel */}
-        <div className="space-y-3">
+        {/* Node detail side panel */}
+        <div>
           {selectedNode ? (
             <NodeDetailCard node={selectedNode} />
           ) : (
             <div className="flex h-full items-center justify-center rounded-[var(--radius-card)] border border-dashed border-hairline p-6 text-center">
-              <p className="text-[0.78rem] text-ink-muted">
-                Click a node on the map to see its details.
-              </p>
+              <p className="text-[0.78rem] text-ink-muted">Click a node on the map to see its live telemetry.</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Consensus health bar */}
-      <ConsensusHealthBar />
+      {/* Public Blockchain Notarization Anchors Table */}
+      <div className="rounded-[var(--radius-card)] border border-hairline bg-surface p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <Anchor className="h-4 w-4 text-navy" />
+              <h3 className="font-display font-semibold text-navy text-[0.98rem]">
+                Public Blockchain Notarization Checkpoints
+              </h3>
+            </div>
+            <p className="text-[0.75rem] text-ink-muted mt-0.5">
+              Cumulative Merkle roots periodically anchored to Polygon Amoy L2. Defeats central operator history deletion.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-[0.75rem] py-1.5 px-3"
+            onClick={() => notarizeMutation.mutate()}
+            disabled={notarizeMutation.isPending}
+          >
+            {notarizeMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+            ) : (
+              <Anchor className="h-3.5 w-3.5 mr-1" />
+            )}
+            Notarize Chain Head
+          </Button>
+        </div>
 
-      {/* Node registry */}
+        {checkpointsQuery.isLoading ? (
+          <p className="text-[0.78rem] text-ink-muted py-3">Loading notarization checkpoints...</p>
+        ) : (checkpointsQuery.data?.checkpoints?.length ?? 0) === 0 ? (
+          <p className="text-[0.78rem] text-ink-muted py-2">
+            No public checkpoints created yet. Click "Notarize Chain Head" to anchor the latest block.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[0.78rem]">
+              <thead>
+                <tr className="border-b border-hairline text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted">
+                  <th className="py-2.5 px-3">Checkpoint</th>
+                  <th className="py-2.5 px-3">Block Height</th>
+                  <th className="py-2.5 px-3">State Merkle Root</th>
+                  <th className="py-2.5 px-3">Public Network</th>
+                  <th className="py-2.5 px-3">Notarized At</th>
+                  <th className="py-2.5 px-3">L1/L2 Transaction</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-hairline/60 font-mono">
+                {checkpointsQuery.data?.checkpoints.map((cp) => (
+                  <tr key={cp.checkpoint_id} className="hover:bg-parchment/50 transition-colors">
+                    <td className="py-2.5 px-3 font-semibold text-navy font-sans">{cp.checkpoint_id}</td>
+                    <td className="py-2.5 px-3 text-teal">#{cp.block_height}</td>
+                    <td className="py-2.5 px-3 text-ink-muted" title={cp.merkle_root}>
+                      {cp.merkle_root.slice(0, 10)}...{cp.merkle_root.slice(-8)}
+                    </td>
+                    <td className="py-2.5 px-3 font-sans text-ink">{cp.network}</td>
+                    <td className="py-2.5 px-3 font-sans text-ink-muted">
+                      {new Date(cp.notarized_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <a
+                        href={cp.explorer_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-teal font-medium hover:underline"
+                      >
+                        <span>{cp.tx_hash.slice(0, 8)}...{cp.tx_hash.slice(-6)}</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Node registry table */}
       <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
         <table className="w-full text-left text-[0.8rem]">
           <thead>
             <tr>
-              {['Node', 'Organisation', 'Location', 'Role', 'Block Height', 'Status'].map((h) => (
+              {['Node', 'Organisation', 'Location', 'Role', 'Sync Height', 'Ping Latency', 'Status'].map((h) => (
                 <th
                   key={h}
                   scope="col"
@@ -279,14 +358,14 @@ export function NetworkTopology() {
             </tr>
           </thead>
           <tbody>
-            {NODES.map((node) => (
+            {nodes.map((node) => (
               <tr
                 key={node.id}
                 className={cx(
                   'cursor-pointer transition-colors hover:bg-parchment/60',
-                  activeNode === node.id && 'bg-navy/5',
+                  activeNodeId === node.id && 'bg-navy/5',
                 )}
-                onClick={() => setActiveNode(activeNode === node.id ? null : node.id)}
+                onClick={() => setActiveNodeId(node.id)}
               >
                 <td className="border-b border-hairline/60 px-4 py-3">
                   <p className="font-medium text-navy">{node.label}</p>
@@ -298,6 +377,9 @@ export function NetworkTopology() {
                 </td>
                 <td className="border-b border-hairline/60 px-4 py-3 font-mono text-teal">
                   #{node.height}
+                </td>
+                <td className="border-b border-hairline/60 px-4 py-3 font-mono text-ink-muted">
+                  {node.latency_ms} ms
                 </td>
                 <td className="border-b border-hairline/60 px-4 py-3">
                   <StatusPill status={node.status} />
@@ -313,12 +395,12 @@ export function NetworkTopology() {
 
 /* ----------------------------------------------------------- sub-components */
 
-function NodeDetailCard({ node }: { node: ConsortiumNode }) {
+function NodeDetailCard({ node }: { node: VisualNode }) {
   return (
     <div className="rounded-[var(--radius-card)] border border-hairline bg-surface p-4 space-y-3">
-      <div className="flex items-start gap-2">
+      <div className="flex items-start gap-2.5">
         <span
-          className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold text-white"
+          className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold text-white shadow-sm"
           style={{ backgroundColor: ROLE_FILL[node.role] }}
         >
           {node.role[0]}
@@ -334,20 +416,26 @@ function NodeDetailCard({ node }: { node: ConsortiumNode }) {
           <dd className="font-medium text-navy">{node.city}</dd>
         </div>
         <div className="flex justify-between py-1.5">
-          <dt className="text-ink-muted">Role</dt>
+          <dt className="text-ink-muted">Consortium Role</dt>
           <dd><RolePill role={node.role} /></dd>
         </div>
         <div className="flex justify-between py-1.5">
-          <dt className="text-ink-muted">Block height</dt>
+          <dt className="text-ink-muted">Synchronized Height</dt>
           <dd className="font-mono text-teal font-semibold">#{node.height}</dd>
         </div>
         <div className="flex justify-between py-1.5">
-          <dt className="text-ink-muted">Status</dt>
+          <dt className="text-ink-muted">Peer Latency</dt>
+          <dd className="font-mono text-ink font-medium">{node.latency_ms} ms</dd>
+        </div>
+        <div className="flex justify-between py-1.5">
+          <dt className="text-ink-muted">Consensus Health</dt>
           <dd><StatusPill status={node.status} /></dd>
         </div>
         <div className="flex justify-between py-1.5">
-          <dt className="text-ink-muted">Finality lag</dt>
-          <dd className="text-teal font-semibold">0 blocks</dd>
+          <dt className="text-ink-muted">Last Block Hash</dt>
+          <dd className="font-mono text-[0.7rem] text-ink-muted" title={node.last_block_hash}>
+            {node.last_block_hash ? `${node.last_block_hash.slice(0, 10)}...` : 'Synchronized'}
+          </dd>
         </div>
       </dl>
     </div>
@@ -384,50 +472,76 @@ function StatusPill({ status }: { status: string }) {
     >
       <span
         className="inline-block h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: STATUS_COLOR[status] }}
+        style={{ backgroundColor: STATUS_COLOR[status] ?? '#2A9D7A' }}
       />
       {status}
     </span>
   );
 }
 
-const ConsensusHealthBar = memo(function ConsensusHealthBar() {
-  const [latency, setLatency] = useState('1.4');
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      // Subtle realistic network jitter every 3 seconds
-      setLatency((1.2 + Math.random() * 0.4).toFixed(1));
-    }, 3000);
-    return () => clearInterval(id);
-  }, []);
+function ConsensusHealthBar({
+  telemetry,
+  onNotarize,
+  isNotarizing,
+}: {
+  telemetry: any;
+  onNotarize: () => void;
+  isNotarizing: boolean;
+}) {
+  const latestCp = telemetry?.latest_checkpoint;
+  const height = telemetry?.local_node?.height ?? 165;
 
   return (
     <div className="rounded-[var(--radius-card)] border border-teal/25 bg-teal-soft/40 px-5 py-3">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[0.78rem]">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-50" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal" />
+      <div className="flex flex-wrap items-center justify-between gap-3 text-[0.78rem]">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-50" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-teal" />
+            </span>
+            <span className="font-semibold text-teal">Consortium Quorum Active</span>
+          </div>
+          <span className="text-ink-muted">
+            Consensus: <span className="font-medium text-navy">{telemetry?.consensus?.protocol ?? 'Federated BFT + Public L2 Anchor'}</span>
           </span>
-          <span className="font-semibold text-teal">BFT Quorum Active</span>
+          <span className="text-ink-muted">
+            Validators: <span className="font-medium text-navy">{telemetry?.consensus?.validators_online ?? 2} / {telemetry?.consensus?.total_validators ?? 2} online</span>
+          </span>
+          <span className="text-ink-muted">
+            Chain Height: <span className="font-mono font-medium text-teal">#{height}</span>
+          </span>
         </div>
-        <span className="text-ink-muted">
-          Consensus: <span className="font-medium text-navy">Istanbul BFT (2-of-3)</span>
-        </span>
-        <span className="text-ink-muted">
-          Finality: <span className="font-medium text-teal">Instantaneous</span>
-        </span>
-        <span className="text-ink-muted">
-          Gossip Sync: <span className="font-medium text-navy">{latency}ms avg</span>
-        </span>
-        <span className="text-ink-muted">
-          Validators: <span className="font-medium text-navy">2 / 2 online</span>
-        </span>
-        <span className="text-ink-muted">
-          Chain Height: <span className="font-mono font-medium text-teal">#165</span>
-        </span>
+
+        <div className="flex items-center gap-2.5">
+          {latestCp && (
+            <div className="flex items-center gap-2 text-[0.72rem] bg-surface/80 rounded-md px-2.5 py-1 border border-teal/20">
+              <Anchor className="h-3 w-3 text-teal" />
+              <span className="text-ink-muted">Anchored to {latestCp.network}:</span>
+              <a
+                href={latestCp.explorer_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-teal hover:underline inline-flex items-center gap-1 font-medium"
+              >
+                <span>{latestCp.tx_hash.slice(0, 8)}...</span>
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onNotarize}
+            disabled={isNotarizing}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-teal text-white text-[0.72rem] font-medium hover:bg-teal-dark disabled:opacity-50 transition"
+            title="Anchor current Merkle root to public L2"
+          >
+            <Anchor className={cx('h-3 w-3', isNotarizing && 'animate-spin')} />
+            <span>{isNotarizing ? 'Anchoring...' : 'Anchor Now'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
-});
+}

@@ -13,8 +13,10 @@
 
 import {
   canonicalJson,
+  DEFAULT_CHAIN_ID,
   exportPublicJwk,
   generateKeyPair,
+  GENESIS_PREV_HASH,
   publicKeyFingerprint,
   signRecord,
 } from '@breadcrumbs/shared';
@@ -22,7 +24,8 @@ import type { EventType, Role, SignedRecord } from '@breadcrumbs/shared';
 
 import { applySchema, getClient, getDb } from './client.ts';
 import { deviceKeys, factories, identities, inventoryItems, ALL_TABLES } from './schema.ts';
-import { commit, ensureGenesis, type ActorContext } from '../chain/ledger.ts';
+import { commit, ensureGenesis, getHead, getNextNonce, type ActorContext } from '../chain/ledger.ts';
+import { notarizeChainHead } from '../chain/notarization.ts';
 
 /* ------------------------------------------------------------- reference */
 
@@ -733,7 +736,14 @@ export async function seedDatabase(): Promise<SeedResult> {
     const signer = keyring.get(event.by);
     if (!actor || !signer) throw new Error(`Seed identity ${event.by} is not provisioned.`);
 
+    const currentHead = await getHead();
+    const prevHash = currentHead ? currentHead.block_hash : GENESIS_PREV_HASH;
+    const nonce = await getNextNonce(actor.id);
+
     const record: SignedRecord = {
+      chain_id: DEFAULT_CHAIN_ID,
+      previous_block_hash: prevHash,
+      nonce,
       event_id: event.event_id,
       factory_id: event.factory_id,
       event_type: event.event_type,
@@ -764,6 +774,13 @@ export async function seedDatabase(): Promise<SeedResult> {
         reason: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  // Publish a public blockchain notarization checkpoint anchoring this demo history
+  try {
+    await notarizeChainHead();
+  } catch (err) {
+    console.error('Failed to notarize chain head:', err);
   }
 
   const db = getDb();

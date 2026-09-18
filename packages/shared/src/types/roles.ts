@@ -182,7 +182,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly EventType[]> = {
     'contract_signed',
     'invoice_issued',
   ],
-  auditor: ['review_confirmed', 'review_disputed'],
+  auditor: [
+    'inspection',
+    'certification',
+    'review_confirmed',
+    'review_disputed',
+  ],
   brand: [
     'contract_created',
     'contract_signed',

@@ -65,6 +65,7 @@ function navForRole(role: string | undefined, factoryId: string | null | undefin
     recordItems.push({ to: '/app/submit', label: 'Submit Record', icon: ScrollText });
   }
   if (role === 'auditor') {
+    recordItems.push({ to: '/app/submit', label: 'Submit Audit Record', icon: ScrollText });
     recordItems.push({ to: '/app/review', label: 'Review Queue', icon: ShieldCheck });
   }
   recordItems.push({ to: '/app/transactions', label: 'Transactions', icon: Blocks });

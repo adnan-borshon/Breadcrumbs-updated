@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft,
   Blocks,
   CheckCircle2,
   ChevronDown,
@@ -55,6 +54,7 @@ const QUORUM_AUDITORS = [
 
 export function RecordDetail() {
   const { eventId = '' } = useParams();
+  const { identity } = useSession();
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['record', eventId],

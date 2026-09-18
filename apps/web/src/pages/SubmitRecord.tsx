@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
   CheckCircle2,
@@ -14,10 +14,12 @@ import {
 import { EVENT_LABEL, submittableEvents } from '@breadcrumbs/shared';
 import type { EventType } from '@breadcrumbs/shared';
 
+import { api } from '../lib/api.ts';
 import { commitEvent, makeEventId, type CommitStage } from '../lib/signer.ts';
 import { sha256File, formatBytes } from '../lib/verifyChain.ts';
 import { useSession } from '../store/session.ts';
 import { AnomalyChart } from '../components/ledger/AnomalyChart.tsx';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import {
   Button,
   Card,
@@ -161,7 +163,18 @@ export function SubmitRecord() {
     [identity],
   );
 
-  const [eventType, setEventType] = useState<EventType>('production_report');
+  const factoriesQuery = useQuery({ queryKey: ['factories'], queryFn: api.factories });
+  const factories = factoriesQuery.data?.factories ?? [];
+  const [targetFactoryId, setTargetFactoryId] = useState<string>('');
+
+  const effectiveFactoryId =
+    identity?.role === 'factory'
+      ? (identity.factory_id ?? '')
+      : (targetFactoryId || factories[0]?.id || 'FAC-MEGHNA');
+
+  const [eventType, setEventType] = useState<EventType>(() =>
+    identity?.role === 'auditor' ? 'inspection' : 'production_report',
+  );
   const [values, setValues] = useState<Record<string, string | boolean>>({});
   const [stage, setStage] = useState<CommitStage | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +227,10 @@ export function SubmitRecord() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!identity?.factory_id) return;
+    if (!effectiveFactoryId) {
+      setError('A target factory must be selected.');
+      return;
+    }
 
     setError(null);
     setStage('validating');
@@ -253,7 +269,7 @@ export function SubmitRecord() {
     try {
       const result = await commitEvent({
         eventType,
-        factoryId: identity.factory_id,
+        factoryId: effectiveFactoryId,
         eventId: makeEventId(eventType.slice(0, 3).toUpperCase()),
         dataFields,
         onStage: setStage,
@@ -268,18 +284,22 @@ export function SubmitRecord() {
     }
   };
 
-  if (!identity?.factory_id) {
-    return <ErrorNote message="Only a factory account can submit records." />;
+  if (!identity || (identity.role !== 'factory' && identity.role !== 'auditor')) {
+    return <ErrorNote message="Only factory or auditor accounts can submit compliance records." />;
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
+      <BackLink defaultTo="/app" defaultLabel="Dashboard" />
+
       <header>
-        <h1 className="text-[1.6rem] text-navy">Submit an audit record</h1>
+        <h1 className="text-[1.6rem] text-navy">
+          {identity.role === 'auditor' ? 'Submit an Independent Audit Record' : 'Submit an Audit Record'}
+        </h1>
         <p className="mt-1.5 max-w-2xl text-[0.88rem] leading-relaxed text-ink-muted">
-          Recorded against <span className="font-medium text-navy">{identity.factory_id}</span>. The
-          record is signed in this browser before it is sent, so the entry is provably yours and
-          cannot be altered afterwards without breaking the chain.
+          {identity.role === 'auditor'
+            ? `Independent third-party compliance record for ${effectiveFactoryId}. The record is signed cryptographically on your device.`
+            : `Recorded against ${identity.factory_id}. The record is signed in this browser before it is sent.`}
         </p>
       </header>
 
@@ -289,6 +309,20 @@ export function SubmitRecord() {
             <CardHeader title="What happened" />
 
             <div className="space-y-5 px-5 py-5">
+              {identity.role === 'auditor' && (
+                <Field label="Target Factory" required hint="Select which factory this compliance audit evaluates.">
+                  <Select
+                    value={effectiveFactoryId}
+                    onChange={(e) => setTargetFactoryId(e.target.value)}
+                  >
+                    {factories.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.id})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
               <Field label="Event type" required>
                 <Select
                   value={eventType}
@@ -359,15 +393,6 @@ export function SubmitRecord() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 border-t border-hairline px-5 py-4">
-              <Button type="submit" variant="primary" disabled={stage !== null}>
-                <ScrollText size={15} aria-hidden />
-                Sign and commit
-              </Button>
-              <span className="text-[0.76rem] text-ink-muted">
-                This writes a permanent block. Records are never deleted, only reviewed.
-              </span>
-            </div>
           </Card>
 
           {/* Oracle / Physical Attestation */}
@@ -530,6 +555,25 @@ export function SubmitRecord() {
               </div>
             </div>
           </Card>
+
+          {/* Action buttons */}
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-hairline bg-surface px-5 py-4">
+            <Button type="submit" variant="primary" disabled={stage !== null}>
+              <ScrollText size={15} aria-hidden />
+              Sign and commit
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate('/app')}
+              disabled={stage !== null}
+            >
+              Cancel
+            </Button>
+            <span className="text-[0.76rem] text-ink-muted">
+              This writes a permanent block. Records are never deleted, only reviewed.
+            </span>
+          </div>
         </div>
       </form>
 

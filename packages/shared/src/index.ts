@@ -8,6 +8,7 @@ export * from './chain/canonical.ts';
 export * from './chain/crypto.ts';
 export * from './chain/block.ts';
 export * from './chain/verify.ts';
+export * from './chain/merkle.ts';
 
 export * from './ai/anomaly.ts';
 

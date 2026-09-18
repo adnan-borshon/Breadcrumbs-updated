@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { EVENT_TYPES } from '../types/roles.ts';
 import type { EventType } from '../types/roles.ts';
+import { DEFAULT_CHAIN_ID, GENESIS_PREV_HASH } from '../types/ledger.ts';
 
 const isoDate = z
   .string()
@@ -281,6 +282,9 @@ export function dataSchemaFor(eventType: EventType): z.ZodType {
 /* ----------------------------------------------------- record and commit */
 
 export const signedRecordSchema = z.object({
+  chain_id: nonEmpty.default(DEFAULT_CHAIN_ID),
+  previous_block_hash: nonEmpty.default(GENESIS_PREV_HASH),
+  nonce: z.number().int().nonnegative().default(0),
   event_id: nonEmpty,
   factory_id: nonEmpty,
   event_type: z.enum(EVENT_TYPES as [EventType, ...EventType[]]),

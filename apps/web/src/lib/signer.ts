@@ -9,7 +9,7 @@
  * real work, not a decorative progress bar.
  */
 
-import { canonicalJson, dataSchemaFor, signRecord } from '@breadcrumbs/shared';
+import { canonicalJson, dataSchemaFor, signRecord, DEFAULT_CHAIN_ID, GENESIS_PREV_HASH } from '@breadcrumbs/shared';
 import type { EventType, SignedRecord } from '@breadcrumbs/shared';
 
 import { api, type CommitResponse } from './api.ts';
@@ -47,6 +47,14 @@ export async function commitEvent(input: CommitEventInput): Promise<CommitRespon
 
   input.onStage?.('validating');
 
+  const [headRes, nonceRes] = await Promise.all([
+    api.head().catch(() => ({ head: null, height: 0 })),
+    api.nonce(identity.id).catch(() => ({ submitter_id: identity.id, next_nonce: 0 })),
+  ]);
+
+  const prevHash = headRes.head ? headRes.head.block_hash : GENESIS_PREV_HASH;
+  const nonce = nonceRes.next_nonce;
+
   /*
     Normalise before signing, not after. The server refuses a record whose data_fields
     change under schema parsing, because the signature would then cover something other
@@ -56,6 +64,9 @@ export async function commitEvent(input: CommitEventInput): Promise<CommitRespon
   const dataFields = dataSchemaFor(input.eventType).parse(input.dataFields) as Record<string, unknown>;
 
   const record: SignedRecord = {
+    chain_id: DEFAULT_CHAIN_ID,
+    previous_block_hash: prevHash,
+    nonce,
     event_id: input.eventId ?? makeEventId('EVT'),
     factory_id: input.factoryId,
     event_type: input.eventType,

@@ -7,6 +7,7 @@
  */
 
 import { create } from 'zustand';
+import { canonicalJson, signPayload } from '@breadcrumbs/shared';
 
 import { api, ApiError, setAuthToken, type Identity } from '../lib/api.ts';
 import { ensureDeviceKey, forgetDeviceKey, type DeviceKey } from '../lib/keystore.ts';
@@ -51,7 +52,18 @@ interface SessionState {
 /** Generates or loads the device key and registers its public half with the server. */
 async function attachDeviceKey(identity: Identity): Promise<DeviceKey> {
   const key = await ensureDeviceKey(identity.id);
-  await api.registerKey(key.publicJwk, `${navigator.platform || 'Browser'} · ${identity.name}`);
+  const challenge = canonicalJson({ action: 'register-key', identity_id: identity.id });
+  let popSignature: string | undefined;
+  try {
+    popSignature = await signPayload(key.privateKey, challenge);
+  } catch (err) {
+    console.warn('Could not produce popSignature:', err);
+  }
+  await api.registerKey(
+    key.publicJwk,
+    `${navigator.platform || 'Browser'} · ${identity.name}`,
+    popSignature,
+  );
   return key;
 }
 

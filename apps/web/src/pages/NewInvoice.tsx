@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Plus, Receipt, Trash2 } from 'lucide-react';
+import { Plus, Receipt, Trash2 } from 'lucide-react';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import type { Currency } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
@@ -125,14 +126,7 @@ export function NewInvoice() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <Link
-        to="/app/invoices"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Invoices
-      </Link>
+      <BackLink defaultTo="/app/invoices" defaultLabel="Invoices" />
 
       <header>
         <h1 className="text-[1.6rem] text-navy">Raise an invoice</h1>
@@ -307,10 +301,19 @@ export function NewInvoice() {
 
               {create.error ? <ErrorNote message={(create.error as Error).message} /> : null}
 
-              <Button type="submit" variant="primary" loading={create.isPending} disabled={!valid}>
-                <Receipt size={15} aria-hidden />
-                Sign and issue
-              </Button>
+              <div className="flex items-center justify-between">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => navigate('/app/invoices')}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" loading={create.isPending} disabled={!valid}>
+                  <Receipt size={15} aria-hidden />
+                  Sign and issue
+                </Button>
+              </div>
             </div>
           </Card>
         </form>
