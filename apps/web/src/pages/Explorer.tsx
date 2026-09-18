@@ -72,16 +72,16 @@ export function Explorer() {
   const report = verifyNow.data ?? verifyQuery.data;
   const checks = new Map<number, BlockCheck>((report?.blocks ?? []).map((c) => [c.index, c]));
 
-  /** Run client-side verification against the raw block list. */
+  /** Run client-side verification against the full raw block list. */
   const runLocalVerify = async () => {
     setLocalVerifying(true);
     try {
-      // Fetch all blocks — the blocks query already has them, cast as RawBlock
-      const data = await api.blocks({});
-      const rawBlocks = data.blocks as unknown as RawBlock[];
-      const sorted = [...rawBlocks].sort((a, b) => a.index - b.index);
+      const data = await api.rawBlocks();
+      const sorted = [...data.blocks].sort((a, b) => a.index - b.index);
       const result = await verifyChainLocally(sorted);
       setLocalReport(result);
+    } catch (err) {
+      console.error('Local verification failed:', err);
     } finally {
       setLocalVerifying(false);
     }
@@ -406,13 +406,15 @@ function DualAttestationPanel({
               {localReport.ok ? <ShieldCheck size={16} aria-hidden /> : <ShieldAlert size={16} aria-hidden />}
               {localReport.ok
                 ? `${localReport.height}/${localReport.height} Blocks Verified on this Device`
-                : `${localReport.brokenCount} Block${localReport.brokenCount !== 1 ? 's' : ''} Failed`}
+                : `${localReport.brokenCount} Block${localReport.brokenCount !== 1 ? 's' : ''} Failed Verification`}
             </p>
             <p className="mt-1 text-[0.74rem] text-ink-muted">
               {localReport.durationMs}ms · SHA-256 + ECDSA P-256 · window.crypto.subtle
             </p>
-            <p className="mt-0.5 text-[0.7rem] text-teal">
-              ✓ Mathematically verified in this browser — server cannot falsify this result
+            <p className={cx('mt-0.5 text-[0.7rem]', localReport.ok ? 'text-teal' : 'text-clay font-medium')}>
+              {localReport.ok
+                ? '✓ Mathematically verified in this browser — server cannot falsify this result'
+                : `✗ Cryptographic violation detected locally starting at block #${localReport.firstBreakIndex ?? '?'}`}
             </p>
           </>
         ) : (

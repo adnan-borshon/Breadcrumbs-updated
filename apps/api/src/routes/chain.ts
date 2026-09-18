@@ -5,7 +5,7 @@ import type { EventFamily } from '@breadcrumbs/shared';
 
 import { getDb } from '../db/client.ts';
 import { blocks } from '../db/schema.ts';
-import { commit, getHead, getHeight, LedgerError, verifyLedger } from '../chain/ledger.ts';
+import { commit, getAllBlocks, getHead, getHeight, LedgerError, verifyLedger } from '../chain/ledger.ts';
 import { listBlockSummaries, getRecord } from '../chain/queries.ts';
 import { rowToBlock } from '../chain/rows.ts';
 import { requireAuth, type AppEnv } from '../middleware/auth.ts';
@@ -17,6 +17,10 @@ export const chainRoutes = new Hono<AppEnv>();
 chainRoutes.get('/head', async (c) => {
   const head = await getHead();
   return c.json({ head, height: await getHeight() });
+});
+
+chainRoutes.get('/raw-blocks', async (c) => {
+  return c.json({ blocks: await getAllBlocks() });
 });
 
 chainRoutes.get('/blocks', async (c) => {

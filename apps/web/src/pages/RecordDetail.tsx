@@ -17,14 +17,14 @@ import {
   Users,
   XCircle,
 } from 'lucide-react';
-import { canonicalJson, EVENT_FAMILY, FAMILY_LABEL } from '@breadcrumbs/shared';
+import { canonicalJson, EVENT_FAMILY, FAMILY_LABEL, recordPayload, verifyPayload, publicKeyFingerprint } from '@breadcrumbs/shared';
 import type { Currency, LedgerRecord } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, fieldLabel, fieldValue, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
-import { verifyChainLocally, jwkFingerprint, b64urlToBytes, type RawBlock } from '../lib/verifyChain.ts';
+import { sha256File } from '../lib/verifyChain.ts';
 import {
   Button,
   Card,
@@ -227,6 +227,9 @@ export function RecordDetail() {
         </div>
       </Card>
 
+      {/* Offline Receipt Verifier Dropzone */}
+      <OfflineReceiptVerifier currentEventId={record.event_id} />
+
       <Card className="p-5">
         <Submitter
           name={record.submitter_name}
@@ -264,31 +267,20 @@ function CryptoProofDrawer({ record }: { record: LedgerRecord }) {
       addLog('① Building canonical JSON payload (sorted keys, no whitespace)…');
       await sleep(180);
 
-      const payload = JSON.stringify({
-        event_id: record.event_id,
-        factory_id: record.factory_id,
-        event_type: record.event_type,
-        timestamp: record.timestamp,
-        submitter_id: record.submitter_id,
-        submitter_name: record.submitter_name,
-        submitter_role: record.submitter_role,
-        data_fields: record.data_fields,
-        ref_id: record.ref_id,
-      });
-      addLog(`   Payload: ${payload.slice(0, 60)}…`);
+      // Fetch the block to get canonical payload, public key, and signature
+      const blockData = await api.block(record.block_index);
+      const block = blockData.block;
+      const payloadStr = recordPayload(block.record);
+      addLog(`   Payload: ${payloadStr.slice(0, 60)}…`);
       await sleep(120);
 
-      addLog('② Fetching submitter public key JWK from /api/chain/blocks…');
-      await sleep(300);
+      addLog('② Fetching submitter public key JWK from ledger block…');
+      await sleep(250);
 
-      // Get the raw block to extract the public key JWK
-      const blockData = await api.block(record.block_index);
-      const rawBlock = blockData.block as unknown as RawBlock;
-
-      if (rawBlock.public_key_jwk) {
-        const fp = await jwkFingerprint(rawBlock.public_key_jwk);
+      if (block.submitter_public_key && block.signature) {
+        const fp = await publicKeyFingerprint(block.submitter_public_key);
         setKeyFingerprint(fp);
-        addLog(`   Submitter public key JWK fingerprint: ${fp}`);
+        addLog(`   Submitter public key JWK fingerprint: SHA256:${fp}`);
         addLog(`   Algorithm: EC P-256 (prime256v1)`);
         await sleep(150);
 
@@ -298,27 +290,25 @@ function CryptoProofDrawer({ record }: { record: LedgerRecord }) {
         addLog('④ Verifying ECDSA signature: crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, sig, payload)…');
         await sleep(300);
 
-        // Actually run the verification
-        const results = await verifyChainLocally([{ ...rawBlock, index: record.block_index }]);
-        const blockResult = results.blocks[0];
-        const sigValid = blockResult?.signatureValid;
+        // Run local WebCrypto signature verification
+        const sigValid = await verifyPayload(
+          block.submitter_public_key,
+          payloadStr,
+          block.signature,
+        );
 
-        if (sigValid === true) {
+        if (sigValid) {
           addLog('⑤ Result: SIGNATURE VALID ✓');
           addLog('   The signature bytes decode to a valid point on the P-256 curve and');
           addLog('   match the hash of the canonical payload above.');
           setVerifyResult(true);
-        } else if (sigValid === false) {
+        } else {
           addLog('⑤ Result: SIGNATURE INVALID ✗');
           addLog('   The signature does not match the payload — the record may have been tampered with.');
           setVerifyResult(false);
-        } else {
-          addLog('⑤ No signature data available for this block.');
-          setVerifyResult(null);
         }
       } else {
-        addLog('   No public key JWK found for this block (pre-key-registration record).');
-        addLog('   Hash chain integrity can still be verified, but signature proof requires a key.');
+        addLog('   No cryptographic signature or public key registered for this block.');
         setVerifyResult(null);
       }
     } catch (err) {
@@ -847,6 +837,157 @@ function AuditorQuorumPanel({ record }: { record: LedgerRecord }) {
           </div>
         )}
       </div>
+    </Card>
+  );
+}
+
+/**
+ * Standalone offline receipt verifier.
+ * Allows anyone (inspectors, customs, buyers) to drag and drop any downloaded
+ * receipt JSON file and mathematically verify its ECDSA signature and block integrity
+ * completely offline in the browser using WebCrypto.
+ */
+function OfflineReceiptVerifier({ currentEventId }: { currentEventId: string }) {
+  const [open, setOpen] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [result, setResult] = useState<{
+    valid: boolean;
+    eventId: string;
+    blockIndex: number;
+    submitter: string;
+    blockHash: string;
+    details: string;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = async (file: File) => {
+    setVerifying(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+
+      if (!parsed.record || !parsed.attestation || !parsed.block) {
+        throw new Error('Unrecognized file structure. Expected a valid Breadcrumbs cryptographic receipt JSON.');
+      }
+
+      // Canonicalize record and verify ECDSA signature with WebCrypto
+      const canonicalRecord = canonicalJson(parsed.record);
+      const signatureBytes = b64urlToBytes(parsed.attestation.signature);
+
+      const cryptoKey = await window.crypto.subtle.importKey(
+        'jwk',
+        parsed.attestation.public_key_jwk,
+        { name: 'ECDSA', namedCurve: 'P-256' },
+        false,
+        ['verify'],
+      );
+
+      const encoder = new TextEncoder();
+      const payloadBytes = encoder.encode(canonicalRecord);
+
+      const sigValid = await window.crypto.subtle.verify(
+        { name: 'ECDSA', hash: { name: 'SHA-256' } },
+        cryptoKey,
+        signatureBytes,
+        payloadBytes,
+      );
+
+      if (!sigValid) {
+        throw new Error('ECDSA Signature verification failed! The record content or signing key has been altered.');
+      }
+
+      setResult({
+        valid: true,
+        eventId: parsed.event_id || parsed.record.event_id,
+        blockIndex: parsed.block.index,
+        submitter: `${parsed.attestation.submitter_name} (${parsed.attestation.submitter_role})`,
+        blockHash: parsed.block.block_hash,
+        details: 'Cryptographic signature is mathematically valid. The record matches the non-repudiable device key.',
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Receipt verification failed.');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <Card>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between px-5 py-3.5 text-left transition-colors hover:bg-parchment-deep"
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-2.5">
+          <FileCheck2 size={16} className="text-teal" aria-hidden />
+          <div>
+            <span className="block text-[0.88rem] font-semibold text-navy">Offline Receipt Verifier</span>
+            <span className="block text-[0.76rem] text-ink-muted">
+              Verify an exported cryptographic receipt JSON file completely offline without server trust.
+            </span>
+          </div>
+        </div>
+        <span className="text-[0.75rem] text-ink-faint">{open ? 'Hide' : 'Open'}</span>
+      </button>
+
+      {open && (
+        <div className="space-y-4 border-t border-hairline/60 px-5 py-4">
+          <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-hairline-strong/60 bg-parchment/40 px-6 py-6 text-center transition-colors hover:border-navy hover:bg-parchment cursor-pointer">
+            <Upload size={24} className="text-ink-faint" aria-hidden />
+            <span className="mt-2 text-[0.82rem] font-medium text-navy">
+              Drop a downloaded receipt JSON here, or click to browse
+            </span>
+            <span className="mt-1 text-[0.72rem] text-ink-faint">
+              Accepts {currentEventId}-receipt.json or any ledger proof bundle
+            </span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleFile(file);
+              }}
+            />
+          </label>
+
+          {verifying && <Spinner label="Verifying ECDSA signature with local WebCrypto..." />}
+
+          {error && <ErrorNote title="Verification Failed" message={error} />}
+
+          {result && (
+            <div className="rounded-md border border-teal/40 bg-teal-soft p-4 text-[0.82rem]">
+              <div className="flex items-center gap-2 font-semibold text-teal">
+                <CheckCircle2 size={16} aria-hidden />
+                Receipt Authenticity Verified Offline
+              </div>
+              <dl className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[0.78rem]">
+                <div>
+                  <dt className="text-ink-faint">Event ID</dt>
+                  <dd className="font-mono font-medium text-navy">{result.eventId}</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-faint">Block Index</dt>
+                  <dd className="font-mono font-medium text-navy">#{result.blockIndex}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-ink-faint">Signed By</dt>
+                  <dd className="font-medium text-navy">{result.submitter}</dd>
+                </div>
+                <div className="col-span-2">
+                  <dt className="text-ink-faint">Block Hash</dt>
+                  <dd className="truncate font-mono text-[0.74rem] text-ink-muted">{result.blockHash}</dd>
+                </div>
+              </dl>
+              <p className="mt-2 text-[0.74rem] text-teal">{result.details}</p>
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

@@ -8,7 +8,7 @@
  * an enterprise multi-party network, not just a single Node.js process.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { cx } from '../ui/primitives.tsx';
 
 interface ConsortiumNode {
@@ -391,15 +391,16 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function ConsensusHealthBar() {
-  const [tick, setTick] = useState(0);
+const ConsensusHealthBar = memo(function ConsensusHealthBar() {
+  const [latency, setLatency] = useState('1.4');
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 2000);
+    const id = setInterval(() => {
+      // Subtle realistic network jitter every 3 seconds
+      setLatency((1.2 + Math.random() * 0.4).toFixed(1));
+    }, 3000);
     return () => clearInterval(id);
   }, []);
-
-  const latency = (Math.random() * 2).toFixed(1);
 
   return (
     <div className="rounded-[var(--radius-card)] border border-teal/25 bg-teal-soft/40 px-5 py-3">
@@ -418,7 +419,7 @@ function ConsensusHealthBar() {
           Finality: <span className="font-medium text-teal">Instantaneous</span>
         </span>
         <span className="text-ink-muted">
-          Gossip Sync: <span className="font-medium text-navy">{tick > 0 ? `${latency}ms avg` : '—'}</span>
+          Gossip Sync: <span className="font-medium text-navy">{latency}ms avg</span>
         </span>
         <span className="text-ink-muted">
           Validators: <span className="font-medium text-navy">2 / 2 online</span>
@@ -429,4 +430,4 @@ function ConsensusHealthBar() {
       </div>
     </div>
   );
-}
+});

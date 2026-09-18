@@ -154,6 +154,7 @@ export const api = {
   head: () => get<{ head: Block | null; height: number }>('/chain/head'),
   blocks: (params: { family?: string; factory?: string } = {}) =>
     get<{ blocks: BlockSummary[] }>(`/chain/blocks${query(params)}`),
+  rawBlocks: () => get<{ blocks: Block[] }>('/chain/raw-blocks'),
   block: (index: number) => get<{ block: Block; record: LedgerRecord | null }>(`/chain/blocks/${index}`),
   verify: () => get<ChainReport>('/chain/verify'),
   commit: (body: { record: unknown; signature: string; key_fingerprint: string }) =>
