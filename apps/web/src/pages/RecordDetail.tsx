@@ -25,6 +25,7 @@ import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, fieldLabel, fieldValue, money } from '../lib/format.ts';
 import { commitEvent, makeEventId } from '../lib/signer.ts';
 import { useSession } from '../store/session.ts';
+import { BackLink } from '../components/ui/BackLink.tsx';
 import {
   Button,
   Card,
@@ -79,14 +80,10 @@ export function RecordDetail() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
-      <Link
-        to="/explorer"
-        viewTransition
-        className="inline-flex items-center gap-1.5 text-[0.8rem] text-ink-muted transition-colors hover:text-navy"
-      >
-        <ArrowLeft size={14} aria-hidden />
-        Explorer
-      </Link>
+      <BackLink
+        defaultTo={identity ? '/app/transactions' : '/explorer'}
+        defaultLabel={identity ? 'Transactions' : 'Explorer'}
+      />
 
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">

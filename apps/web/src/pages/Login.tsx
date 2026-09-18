@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react';
@@ -13,6 +13,7 @@ export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const signIn = useSession((state) => state.signIn);
+  const currentIdentity = useSession((state) => state.identity);
 
   const [role, setRole] = useState<Role>('factory');
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -22,12 +23,21 @@ export function Login() {
 
   const from = (location.state as { from?: string } | null)?.from;
 
+  // If already authenticated, redirect straight to dashboard
+  useEffect(() => {
+    if (currentIdentity) {
+      const target = from && from !== '/' && from !== '/login' ? from : '/app';
+      navigate(target, { replace: true });
+    }
+  }, [currentIdentity, from, navigate]);
+
   const onSelect = async (identity: Identity) => {
     setPendingId(identity.id);
     setError(null);
     try {
       await signIn(identity.id);
-      navigate(from ?? '/app', { replace: true, viewTransition: true });
+      const target = from && from !== '/' && from !== '/login' ? from : '/app';
+      navigate(target, { replace: true, viewTransition: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.');
       setPendingId(null);

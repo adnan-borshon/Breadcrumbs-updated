@@ -7,6 +7,7 @@ import {
   Boxes,
   FileText,
   Fingerprint,
+  LayoutDashboard,
   Link2,
   Receipt,
   ScrollText,
@@ -18,10 +19,12 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 import { api } from '../lib/api.ts';
+import { useSession } from '../store/session.ts';
 import { Card, LinkButton, cx } from '../components/ui/primitives.tsx';
 import { useChainReport } from '../components/ledger/ChainStatusPill.tsx';
 
 export function Landing() {
+  const { identity } = useSession();
   const { data: report } = useChainReport();
   const { data: factories } = useQuery({ queryKey: ['public', 'factories'], queryFn: api.publicFactories });
 
@@ -46,10 +49,18 @@ export function Landing() {
           </p>
 
           <div className="mt-7 flex flex-wrap items-center gap-3">
-            <LinkButton to="/login" variant="primary">
-              Sign in to the ledger
-              <ArrowRight size={15} aria-hidden />
-            </LinkButton>
+            {identity ? (
+              <LinkButton to="/app" variant="primary">
+                <LayoutDashboard size={15} aria-hidden />
+                Go to your dashboard
+                <ArrowRight size={15} aria-hidden />
+              </LinkButton>
+            ) : (
+              <LinkButton to="/login" variant="primary">
+                Sign in to the ledger
+                <ArrowRight size={15} aria-hidden />
+              </LinkButton>
+            )}
             <LinkButton to="/lookup">
               <Search size={15} aria-hidden />
               Public lookup — no account

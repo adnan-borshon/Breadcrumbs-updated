@@ -403,7 +403,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-hairline bg-parchment/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-[78rem] items-center gap-3 px-4 py-3 sm:px-6">
           {/* Brand */}
-          <Link to="/" viewTransition className="flex shrink-0 items-center gap-2">
+          <Link to={identity ? '/app' : '/'} viewTransition className="flex shrink-0 items-center gap-2">
             <BreadcrumbsMark />
             <span className="font-display text-[1.05rem] font-semibold tracking-tight text-navy">
               Breadcrumbs
