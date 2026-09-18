@@ -22,6 +22,7 @@ import {
   cx,
 } from '../components/ui/primitives.tsx';
 import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
+import { EntityAuditTimeline } from '../components/ledger/EntityAuditTimeline.tsx';
 import { InvoiceStatusChip } from './Invoices.tsx';
 import { PaymentStatusChip } from './Payments.tsx';
 
@@ -208,31 +209,12 @@ export function InvoiceDetail() {
         )}
       </Card>
 
-      <Card>
-        <CardHeader title="Chain history" description="Every block that touched this invoice." />
-        <ul className="divide-y divide-hairline/60">
-          {events.map((record) => (
-            <li
-              key={record.event_id}
-              className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-            >
-              <div className="min-w-0">
-                <Link
-                  to={`/record/${encodeURIComponent(record.event_id)}`}
-                  viewTransition
-                  className="text-[0.85rem] font-medium text-navy hover:underline"
-                >
-                  {eventLabel(record.event_type)}
-                </Link>
-                <p className="text-[0.74rem] text-ink-muted">
-                  {record.submitter_name} · {dateTimeOf(record.timestamp)}
-                </p>
-              </div>
-              <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <EntityAuditTimeline
+        events={events}
+        entityType="invoice"
+        title="Invoice lifecycle audit trail"
+        description="Every cryptographic block that issued, approved, disputed, or settled this invoice."
+      />
     </div>
   );
 }

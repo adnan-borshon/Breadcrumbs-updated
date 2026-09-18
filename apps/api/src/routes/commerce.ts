@@ -186,17 +186,41 @@ transactionRoutes.get('/', async (c) => {
     .map((f) => f.trim())
     .filter(Boolean);
 
+  const statusParam = c.req.query('status');
+  const statuses = statusParam
+    ? statusParam.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
   const all = await listRecords({
     factoryId,
-    status: (c.req.query('status') as never) || undefined,
   });
 
-  const filtered = families.length
+  let filtered = families.length
     ? all.filter((r) => families.includes(r.event_family))
     : all;
 
+  if (statuses.length > 0) {
+    filtered = filtered.filter((r) => statuses.includes(r.status));
+  }
+
+  const fromDate = c.req.query('fromDate');
+  if (fromDate) {
+    const fromTs = new Date(fromDate).getTime();
+    if (!Number.isNaN(fromTs)) {
+      filtered = filtered.filter((r) => new Date(r.timestamp).getTime() >= fromTs);
+    }
+  }
+
+  const toDate = c.req.query('toDate');
+  if (toDate) {
+    const toTs = new Date(toDate).getTime();
+    if (!Number.isNaN(toTs)) {
+      filtered = filtered.filter((r) => new Date(r.timestamp).getTime() <= toTs);
+    }
+  }
+
   const search = (c.req.query('q') ?? '').toLowerCase().trim();
-  const matched = search
+  let matched = search
     ? filtered.filter((r) =>
         [r.event_id, r.factory_name, r.submitter_name, r.event_type, JSON.stringify(r.data_fields)]
           .join(' ')
@@ -205,6 +229,24 @@ transactionRoutes.get('/', async (c) => {
       )
     : filtered;
 
-  const limit = Number(c.req.query('limit') ?? 200);
-  return c.json({ transactions: matched.slice(0, limit), total: matched.length });
+  const sortOrder = c.req.query('sortOrder') ?? 'desc';
+  if (sortOrder === 'asc') {
+    matched = [...matched].sort((a, b) => a.block_index - b.block_index);
+  } else {
+    matched = [...matched].sort((a, b) => b.block_index - a.block_index);
+  }
+
+  const page = Math.max(1, Number(c.req.query('page') ?? 1));
+  const limit = Math.max(1, Number(c.req.query('limit') ?? 25));
+  const startIndex = (page - 1) * limit;
+  const paged = matched.slice(startIndex, startIndex + limit);
+
+  return c.json({
+    transactions: paged,
+    total: matched.length,
+    page,
+    limit,
+    totalPages: Math.ceil(matched.length / limit) || 1,
+  });
 });
+

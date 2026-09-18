@@ -21,10 +21,12 @@ import type { BlockCheck, ChainReport, EventFamily } from '@breadcrumbs/shared';
 import { api } from '../lib/api.ts';
 import { verifyChainLocally, type LocalVerifyReport } from '../lib/verifyChain.ts';
 import { dateTimeOf, eventLabel } from '../lib/format.ts';
-import { Button, Card, ErrorNote, Spinner, cx } from '../components/ui/primitives.tsx';
+import { Button, Card, EmptyState, ErrorNote, Spinner, cx } from '../components/ui/primitives.tsx';
 import { HashText } from '../components/ledger/Crypto.tsx';
 import { StatusBadge } from '../components/ledger/StatusBadge.tsx';
 import { NetworkTopology } from '../components/ledger/NetworkTopology.tsx';
+import { HistoryFilterToolbar, type DatePreset } from '../components/ledger/HistoryFilterToolbar.tsx';
+import { PaginationBar } from '../components/ui/PaginationBar.tsx';
 
 type ExplorerTab = 'blocks' | 'topology';
 
@@ -33,6 +35,15 @@ export function Explorer() {
   const [family, setFamily] = useState<EventFamily | 'all'>('all');
   const [labOpen, setLabOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ExplorerTab>('blocks');
+
+  // Search, filter, and pagination state
+  const [search, setSearch] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [integrityFilter, setIntegrityFilter] = useState<'all' | 'broken' | 'valid'>('all');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   // Server-side verification (existing)
   const blocksQuery = useQuery({
@@ -46,8 +57,11 @@ export function Explorer() {
   const [localReport, setLocalReport] = useState<LocalVerifyReport | null>(null);
   const [localVerifying, setLocalVerifying] = useState(false);
 
-  const invalidateEverything = () =>
+
+  const invalidateEverything = () => {
+    setLocalReport(null);
     queryClient.invalidateQueries({ predicate: () => true });
+  };
 
   const verifyNow = useMutation({
     mutationFn: api.verify,
@@ -92,7 +106,83 @@ export function Explorer() {
     await runLocalVerify();
   };
 
+  const rawBlocks = blocksQuery.data?.blocks ?? [];
+  const now = Date.now();
+  const dateThreshold =
+    datePreset === 'today'
+      ? now - 24 * 3600 * 1000
+      : datePreset === '7d'
+        ? now - 7 * 24 * 3600 * 1000
+        : datePreset === '30d'
+          ? now - 30 * 24 * 3600 * 1000
+          : 0;
+
+  const filteredBlocks = rawBlocks.filter((block) => {
+    // Search
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const match =
+        block.index.toString().includes(q) ||
+        block.block_hash.toLowerCase().includes(q) ||
+        block.previous_block_hash.toLowerCase().includes(q) ||
+        block.event_id.toLowerCase().includes(q) ||
+        block.event_type.toLowerCase().includes(q) ||
+        block.factory_name.toLowerCase().includes(q) ||
+        block.submitter_name.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+
+    // Status
+    if (selectedStatuses.length > 0 && !selectedStatuses.includes(block.status)) {
+      return false;
+    }
+
+    // Date
+    if (dateThreshold > 0 && new Date(block.timestamp).getTime() < dateThreshold) {
+      return false;
+    }
+
+    // Integrity
+    if (integrityFilter !== 'all') {
+      const check = checks.get(block.index);
+      const broken = check
+        ? !check.hashValid || !check.linkValid || !check.signatureValid
+        : false;
+      const downstream = check?.invalidatedByEarlierBreak ?? false;
+      const isCompromised = broken || downstream;
+
+      if (integrityFilter === 'broken' && !isCompromised) return false;
+      if (integrityFilter === 'valid' && isCompromised) return false;
+    }
+
+    return true;
+  });
+
+  const sortedBlocks = [...filteredBlocks].sort((a, b) =>
+    sortOrder === 'asc' ? a.index - b.index : b.index - a.index,
+  );
+
+  const totalPages = Math.ceil(sortedBlocks.length / pageSize) || 1;
+  const pagedBlocks = sortedBlocks.slice((page - 1) * pageSize, page * pageSize);
+
+  const activeFiltersCount =
+    (search ? 1 : 0) +
+    (family !== 'all' ? 1 : 0) +
+    selectedStatuses.length +
+    (integrityFilter !== 'all' ? 1 : 0) +
+    (datePreset !== 'all' ? 1 : 0);
+
+  const resetFilters = () => {
+    setSearch('');
+    setFamily('all');
+    setSelectedStatuses([]);
+    setIntegrityFilter('all');
+    setDatePreset('all');
+    setPage(1);
+  };
+
   return (
+
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -219,16 +309,89 @@ export function Explorer() {
         <NetworkTopology />
       ) : (
         <>
-          {/* ---------------------------------------------------------- filter */}
-          <div className="flex flex-wrap gap-1.5">
-            <FilterChip active={family === 'all'} onClick={() => setFamily('all')}>
-              All families
-            </FilterChip>
-            {EVENT_FAMILIES.map((option) => (
-              <FilterChip key={option} active={family === option} onClick={() => setFamily(option)}>
-                {FAMILY_LABEL[option]}
-              </FilterChip>
-            ))}
+          {/* ---------------------------------------------------------- unified filter toolbar */}
+          <HistoryFilterToolbar
+            search={search}
+            onSearchChange={(s) => {
+              setSearch(s);
+              setPage(1);
+            }}
+            searchPlaceholder="Search blocks by index (#), hash, submitter, factory, or event..."
+            selectedStatuses={selectedStatuses}
+            onStatusToggle={(s) => {
+              setSelectedStatuses((curr) =>
+                curr.includes(s) ? curr.filter((x) => x !== s) : [...curr, s],
+              );
+              setPage(1);
+            }}
+            selectedFamily={family}
+            onFamilySelect={(fam) => {
+              setFamily(fam);
+              setPage(1);
+            }}
+            datePreset={datePreset}
+            onDatePresetChange={(dp) => {
+              setDatePreset(dp);
+              setPage(1);
+            }}
+            sortOrder={sortOrder}
+            onSortOrderToggle={() => setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'))}
+            activeFilterCount={activeFiltersCount}
+            onResetAll={resetFilters}
+          />
+
+          {/* Cryptographic Integrity filter chips */}
+          <div className="flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-hairline bg-surface p-3 text-[0.78rem]">
+            <span className="text-[0.72rem] font-semibold uppercase tracking-wide text-ink-faint">
+              Chain Integrity Filter:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIntegrityFilter('all');
+                setPage(1);
+              }}
+              className={cx(
+                'rounded-[var(--radius-pill)] border px-2.5 py-0.5 transition-colors',
+                integrityFilter === 'all'
+                  ? 'border-navy bg-navy text-parchment font-medium'
+                  : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
+              )}
+            >
+              All Blocks ({rawBlocks.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIntegrityFilter('broken');
+                setPage(1);
+              }}
+              className={cx(
+                'inline-flex items-center gap-1 rounded-[var(--radius-pill)] border px-2.5 py-0.5 transition-colors',
+                integrityFilter === 'broken'
+                  ? 'border-clay bg-clay text-parchment font-medium'
+                  : 'border-clay/40 bg-clay-soft text-clay hover:border-clay',
+              )}
+            >
+              <AlertTriangle size={12} />
+              Broken / Tampered Only
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIntegrityFilter('valid');
+                setPage(1);
+              }}
+              className={cx(
+                'inline-flex items-center gap-1 rounded-[var(--radius-pill)] border px-2.5 py-0.5 transition-colors',
+                integrityFilter === 'valid'
+                  ? 'border-teal bg-teal text-parchment font-medium'
+                  : 'border-teal/40 bg-teal-soft text-teal hover:border-teal',
+              )}
+            >
+              <CheckCircle2 size={12} />
+              Valid Blocks Only
+            </button>
           </div>
 
           {/* ---------------------------------------------------------- blocks */}
@@ -239,77 +402,101 @@ export function Explorer() {
               title="Could not load the chain"
               message={(blocksQuery.error as Error).message}
             />
+          ) : sortedBlocks.length === 0 ? (
+            <EmptyState
+              title="No blocks match filter"
+              description="Try broadening your search term or resetting active filters."
+            />
           ) : (
-            <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
-              <table className="w-full min-w-[52rem] text-left text-[0.82rem]">
-                <thead>
-                  <tr>
-                    {['#', 'Event', 'Factory', 'Submitted by', 'Previous hash', 'Block hash', 'Status', 'Integrity'].map(
-                      (heading) => (
+            <div className="space-y-2">
+              <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
+                <table className="w-full min-w-[52rem] text-left text-[0.82rem]">
+                  <thead>
+                    <tr>
+                      {[
+                        { id: 'index', label: '#' },
+                        { id: 'event', label: 'Event' },
+                        { id: 'factory', label: 'Factory' },
+                        { id: 'submitter', label: 'Submitted by' },
+                        { id: 'prev_hash', label: 'Previous hash' },
+                        { id: 'block_hash', label: 'Block hash' },
+                        { id: 'status', label: 'Status' },
+                        { id: 'integrity', label: 'Integrity' },
+                      ].map((col) => (
                         <th
-                          key={heading}
+                          key={col.id}
                           scope="col"
                           className="border-b border-hairline px-3 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted"
                         >
-                          {heading}
+                          {col.label}
                         </th>
-                      ),
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...blocksQuery.data.blocks].reverse().map((block) => {
-                    const check = checks.get(block.index);
-                    const broken = check
-                      ? !check.hashValid || !check.linkValid || !check.signatureValid
-                      : false;
-                    const downstream = check?.invalidatedByEarlierBreak ?? false;
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedBlocks.map((block) => {
+                      const check = checks.get(block.index);
+                      const broken = check
+                        ? !check.hashValid || !check.linkValid || !check.signatureValid
+                        : false;
+                      const downstream = check?.invalidatedByEarlierBreak ?? false;
 
-                    return (
-                      <tr
-                        key={block.index}
-                        className={cx(
-                          'transition-colors hover:bg-parchment/60',
-                          broken && 'bg-clay-soft/70',
-                          !broken && downstream && 'bg-gold-soft/40',
-                        )}
-                      >
-                        <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
-                          {block.index}
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5">
-                          <Link
-                            to={`/record/${encodeURIComponent(block.event_id)}`}
-                            viewTransition
-                            className="font-medium text-navy hover:underline"
-                          >
-                            {eventLabel(block.event_type)}
-                          </Link>
-                          <p className="text-[0.7rem] text-ink-faint">{dateTimeOf(block.timestamp)}</p>
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                          {block.factory_name}
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                          {block.submitter_name}
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5">
-                          <HashText value={block.previous_block_hash} label="Previous hash" lead={6} tail={4} />
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5">
-                          <HashText value={block.block_hash} label="Block hash" lead={6} tail={4} />
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5">
-                          <StatusBadge status={block.status} size="sm" compact />
-                        </td>
-                        <td className="border-b border-hairline/60 px-3 py-2.5">
-                          <IntegrityCell check={check} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      return (
+                        <tr
+                          key={block.index}
+                          className={cx(
+                            'transition-colors hover:bg-parchment/60',
+                            broken && 'bg-clay-soft/70',
+                            !broken && downstream && 'bg-gold-soft/40',
+                          )}
+                        >
+                          <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
+                            {block.index}
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5">
+                            <Link
+                              to={`/record/${encodeURIComponent(block.event_id)}`}
+                              viewTransition
+                              className="font-medium text-navy hover:underline"
+                            >
+                              {eventLabel(block.event_type)}
+                            </Link>
+                            <p className="text-[0.7rem] text-ink-faint">{dateTimeOf(block.timestamp)}</p>
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                            {block.factory_name}
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                            {block.submitter_name}
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5">
+                            <HashText value={block.previous_block_hash} label="Previous hash" lead={6} tail={4} />
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5">
+                            <HashText value={block.block_hash} label="Block hash" lead={6} tail={4} />
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5">
+                            <StatusBadge status={block.status} size="sm" compact />
+                          </td>
+                          <td className="border-b border-hairline/60 px-3 py-2.5">
+                            <IntegrityCell check={check} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination controls */}
+              <PaginationBar
+                page={page}
+                totalPages={totalPages}
+                totalItems={sortedBlocks.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+              />
             </div>
           )}
         </>

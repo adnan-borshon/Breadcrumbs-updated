@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Download, Search } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { EVENT_FAMILIES, FAMILY_LABEL } from '@breadcrumbs/shared';
 import type { Currency, EventFamily, LedgerRecord } from '@breadcrumbs/shared';
 
 import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, money } from '../lib/format.ts';
 import { useSession } from '../store/session.ts';
-import { EmptyState, ErrorNote, Input, Spinner, cx } from '../components/ui/primitives.tsx';
+import { EmptyState, ErrorNote, Spinner, cx } from '../components/ui/primitives.tsx';
 import { HashText } from '../components/ledger/Crypto.tsx';
 import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
+import { HistoryFilterToolbar, type DatePreset } from '../components/ledger/HistoryFilterToolbar.tsx';
+import { PaginationBar } from '../components/ui/PaginationBar.tsx';
 
 /**
  * The unified feed: every state-changing event across every module, in one stream.
@@ -22,24 +24,59 @@ export function Transactions() {
   const { identity } = useSession();
   const [families, setFamilies] = useState<EventFamily[]>([]);
   const [term, setTerm] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const factory = identity?.role === 'factory' ? (identity.factory_id ?? undefined) : undefined;
 
+  const now = Date.now();
+  const fromDate =
+    datePreset === 'today'
+      ? new Date(now - 24 * 3600 * 1000).toISOString()
+      : datePreset === '7d'
+        ? new Date(now - 7 * 24 * 3600 * 1000).toISOString()
+        : datePreset === '30d'
+          ? new Date(now - 30 * 24 * 3600 * 1000).toISOString()
+          : undefined;
+
   const { data, isPending, isError, error } = useQuery({
-    queryKey: ['transactions', { families, term, factory }],
+    queryKey: ['transactions', { families, term, factory, selectedStatuses, fromDate, page, pageSize, sortOrder }],
     queryFn: () =>
       api.transactions({
         family: families.length ? families.join(',') : undefined,
+        status: selectedStatuses.length ? selectedStatuses.join(',') : undefined,
         q: term.trim() || undefined,
         factory,
-        limit: 300,
+        limit: pageSize,
+        page,
+        fromDate,
+        sortOrder,
       }),
   });
 
-  const toggle = (family: EventFamily) =>
+  const toggleFamily = (family: EventFamily) => {
     setFamilies((current) =>
       current.includes(family) ? current.filter((f) => f !== family) : [...current, family],
     );
+    setPage(1);
+  };
+
+  const activeFiltersCount =
+    (term.trim() ? 1 : 0) +
+    families.length +
+    selectedStatuses.length +
+    (datePreset !== 'all' ? 1 : 0);
+
+  const resetFilters = () => {
+    setTerm('');
+    setFamilies([]);
+    setSelectedStatuses([]);
+    setDatePreset('all');
+    setPage(1);
+  };
 
   return (
     <div className="space-y-5">
@@ -51,90 +88,75 @@ export function Transactions() {
         </p>
       </header>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-            aria-hidden
-          />
-          <Input
-            value={term}
-            onChange={(event) => setTerm(event.target.value)}
-            placeholder="Search by reference, factory, person or value"
-            className="pl-9"
-            aria-label="Search transactions"
-          />
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <p className="text-[0.78rem] text-ink-muted">
-            {data ? `${data.total} matching` : ''}
-          </p>
-          <button
-            type="button"
-            onClick={() =>
-              void api.exportTransactions({
-                family: families.length ? families.join(',') : undefined,
-                factory,
-                q: term.trim() || undefined,
-                format: 'csv',
-              })
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
-            title="Export filtered transactions as CSV spreadsheet"
-          >
-            <Download size={13} aria-hidden />
-            Export CSV
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              void api.exportTransactions({
-                family: families.length ? families.join(',') : undefined,
-                factory,
-                q: term.trim() || undefined,
-                format: 'json',
-              })
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
-            title="Export filtered transactions as verifiable JSON"
-          >
-            <Download size={13} aria-hidden />
-            Export JSON
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {EVENT_FAMILIES.map((family) => {
-          const active = families.includes(family);
-          return (
-            <button
-              key={family}
-              type="button"
-              onClick={() => toggle(family)}
-              aria-pressed={active}
-              className={cx(
-                'rounded-[var(--radius-pill)] border px-3 py-1 text-[0.76rem] transition-colors',
-                active
-                  ? 'border-navy bg-navy text-parchment'
-                  : 'border-hairline bg-surface text-ink-muted hover:border-hairline-strong hover:text-navy',
-              )}
-            >
-              {FAMILY_LABEL[family]}
-            </button>
+      {/* Unified Filter Toolbar */}
+      <HistoryFilterToolbar
+        search={term}
+        onSearchChange={(t) => {
+          setTerm(t);
+          setPage(1);
+        }}
+        searchPlaceholder="Search by reference, factory, submitter, event, or data fields…"
+        selectedStatuses={selectedStatuses}
+        onStatusToggle={(s) => {
+          setSelectedStatuses((curr) =>
+            curr.includes(s) ? curr.filter((x) => x !== s) : [...curr, s],
           );
-        })}
-        {families.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => setFamilies([])}
-            className="rounded-[var(--radius-pill)] px-3 py-1 text-[0.76rem] text-ink-muted underline decoration-hairline-strong underline-offset-4 hover:text-navy"
-          >
-            Clear
-          </button>
-        ) : null}
-      </div>
+          setPage(1);
+        }}
+        selectedFamilies={families}
+        onFamiliesToggle={toggleFamily}
+        datePreset={datePreset}
+        onDatePresetChange={(dp) => {
+          setDatePreset(dp);
+          setPage(1);
+        }}
+        sortOrder={sortOrder}
+        onSortOrderToggle={() => setSortOrder((o) => (o === 'desc' ? 'asc' : 'desc'))}
+        activeFilterCount={activeFiltersCount}
+        onResetAll={resetFilters}
+        customActions={
+          <>
+            <p className="text-[0.78rem] text-ink-muted hidden sm:block">
+              {data ? `${data.total} matching` : ''}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                void api.exportTransactions({
+                  family: families.length ? families.join(',') : undefined,
+                  status: selectedStatuses.length ? selectedStatuses.join(',') : undefined,
+                  factory,
+                  q: term.trim() || undefined,
+                  format: 'csv',
+                })
+              }
+              className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1.5 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+              title="Export filtered transactions as CSV spreadsheet"
+            >
+              <Download size={13} aria-hidden />
+              Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void api.exportTransactions({
+                  family: families.length ? families.join(',') : undefined,
+                  status: selectedStatuses.length ? selectedStatuses.join(',') : undefined,
+                  factory,
+                  q: term.trim() || undefined,
+                  format: 'json',
+                })
+              }
+              className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-surface px-2.5 py-1.5 text-[0.78rem] font-medium text-navy shadow-xs transition-colors hover:border-navy"
+              title="Export filtered transactions as verifiable JSON"
+            >
+              <Download size={13} aria-hidden />
+              Export JSON
+            </button>
+          </>
+        }
+      />
+
 
       {isPending ? (
         <Spinner label="Loading transactions" />
@@ -143,61 +165,72 @@ export function Transactions() {
       ) : data.transactions.length === 0 ? (
         <EmptyState title="Nothing matches" description="Try clearing the filters or the search." />
       ) : (
-        <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
-          <table className="w-full min-w-[50rem] text-left text-[0.82rem]">
-            <thead>
-              <tr>
-                {['#', 'When', 'Event', 'Reference', 'Factory', 'By', 'Value', 'Status'].map((heading) => (
-                  <th
-                    key={heading}
-                    scope="col"
-                    className="border-b border-hairline px-3 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.transactions.map((record) => (
-                <tr key={record.event_id} className="transition-colors hover:bg-parchment/60">
-                  <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
-                    {record.block_index}
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5 whitespace-nowrap text-ink-muted">
-                    {dateTimeOf(record.timestamp)}
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5">
-                    <Link
-                      to={`/record/${encodeURIComponent(record.event_id)}`}
-                      viewTransition
-                      className="font-medium text-navy hover:underline"
+        <div className="space-y-2">
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-hairline bg-surface">
+            <table className="w-full min-w-[50rem] text-left text-[0.82rem]">
+              <thead>
+                <tr>
+                  {['#', 'When', 'Event', 'Reference', 'Factory', 'By', 'Value', 'Status'].map((heading) => (
+                    <th
+                      key={heading}
+                      scope="col"
+                      className="border-b border-hairline px-3 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-ink-muted"
                     >
-                      {eventLabel(record.event_type)}
-                    </Link>
-                    <p className="text-[0.68rem] uppercase tracking-wide text-ink-faint">
-                      {FAMILY_LABEL[record.event_family]}
-                    </p>
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5">
-                    <ReferenceCell record={record} />
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                    {record.factory_name}
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
-                    {record.submitter_name}
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5 tabular whitespace-nowrap">
-                    <ValueCell record={record} />
-                  </td>
-                  <td className="border-b border-hairline/60 px-3 py-2.5">
-                    <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
-                  </td>
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.transactions.map((record) => (
+                  <tr key={record.event_id} className="transition-colors hover:bg-parchment/60">
+                    <td className="border-b border-hairline/60 px-3 py-2.5 tabular text-ink-faint">
+                      {record.block_index}
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5 whitespace-nowrap text-ink-muted">
+                      {dateTimeOf(record.timestamp)}
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5">
+                      <Link
+                        to={`/record/${encodeURIComponent(record.event_id)}`}
+                        viewTransition
+                        className="font-medium text-navy hover:underline"
+                      >
+                        {eventLabel(record.event_type)}
+                      </Link>
+                      <p className="text-[0.68rem] uppercase tracking-wide text-ink-faint">
+                        {FAMILY_LABEL[record.event_family]}
+                      </p>
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5">
+                      <ReferenceCell record={record} />
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                      {record.factory_name}
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5 text-ink-muted">
+                      {record.submitter_name}
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5 tabular whitespace-nowrap">
+                      <ValueCell record={record} />
+                    </td>
+                    <td className="border-b border-hairline/60 px-3 py-2.5">
+                      <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <PaginationBar
+            page={page}
+            totalPages={data.totalPages || 1}
+            totalItems={data.total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </div>
       )}
     </div>

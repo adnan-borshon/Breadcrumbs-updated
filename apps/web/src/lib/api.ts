@@ -197,8 +197,25 @@ export const api = {
       `/payments/${encodeURIComponent(id)}`,
     ),
 
-  transactions: (params: { family?: string; factory?: string; status?: string; q?: string; limit?: number } = {}) =>
-    get<{ transactions: LedgerRecord[]; total: number }>(`/transactions${query(params)}`),
+  transactions: (params: {
+    family?: string;
+    factory?: string;
+    status?: string;
+    q?: string;
+    limit?: number;
+    page?: number;
+    fromDate?: string;
+    toDate?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  } = {}) =>
+    get<{
+      transactions: LedgerRecord[];
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    }>(`/transactions${query(params)}`),
 
   publicFactories: () => get<{ factories: FactoryWithTrust[] }>('/public/factories'),
   publicFactory: (id: string) =>

@@ -8,6 +8,7 @@ import { api } from '../lib/api.ts';
 import { dateTimeOf, eventLabel, money } from '../lib/format.ts';
 import { Card, CardHeader, ErrorNote, Spinner, Stat } from '../components/ui/primitives.tsx';
 import { StatusBadgeLink } from '../components/ledger/StatusBadge.tsx';
+import { EntityAuditTimeline } from '../components/ledger/EntityAuditTimeline.tsx';
 import { PaymentStatusChip } from './Payments.tsx';
 
 export function PaymentDetail() {
@@ -94,34 +95,12 @@ export function PaymentDetail() {
         </dl>
       </Card>
 
-      <Card>
-        <CardHeader
-          title="Chain history"
-          description="Initiation and settlement are separate blocks — two facts, two entries."
-        />
-        <ul className="divide-y divide-hairline/60">
-          {events.map((record) => (
-            <li
-              key={record.event_id}
-              className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-            >
-              <div className="min-w-0">
-                <Link
-                  to={`/record/${encodeURIComponent(record.event_id)}`}
-                  viewTransition
-                  className="text-[0.85rem] font-medium text-navy hover:underline"
-                >
-                  {eventLabel(record.event_type)}
-                </Link>
-                <p className="text-[0.74rem] text-ink-muted">
-                  {record.submitter_name} · {dateTimeOf(record.timestamp)}
-                </p>
-              </div>
-              <StatusBadgeLink status={record.status} eventId={record.event_id} size="sm" compact />
-            </li>
-          ))}
-        </ul>
-      </Card>
+      <EntityAuditTimeline
+        events={events}
+        entityType="payment"
+        title="Payment lifecycle audit trail"
+        description="Initiation, settlement, and verification are individual blocks written to the ledger."
+      />
     </div>
   );
 }
